@@ -22,6 +22,8 @@ import whaleRoutes from './routes/whales.js';
 import referralRoutes from './routes/referral.js';
 import leaderboardRoutes from './routes/leaderboard.js';
 import journalRoutes from './routes/journal.js';
+import tokenScannerRoutes from './routes/token-scanner.js';
+import dcaRoutes from './routes/dca.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import Redis from 'ioredis';
 
@@ -60,6 +62,8 @@ app.use('/api/v1/whales', whaleRoutes);
 app.use('/api/v1/referral', referralRoutes);
 app.use('/api/v1/leaderboard', leaderboardRoutes);
 app.use('/api/v1/journal', journalRoutes);
+app.use('/api/v1/scanner', tokenScannerRoutes);
+app.use('/api/v1/dca', dcaRoutes);
 
 // Health check
 app.get('/health', (_req, res) => {

@@ -567,6 +567,118 @@ router.get('/ticker', async (_req: Request, res: Response) => {
   }
 });
 
+// GET /seasonality/:symbol — Day-of-week and hour-of-day performance analysis
+router.get('/seasonality/:symbol', async (req: Request, res: Response) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+
+    // Check Redis cache (5 min)
+    const cacheKey = `market:seasonality:${symbol}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+
+    // Find pair
+    const pairResult = await query(
+      `SELECT tp.id FROM trading_pairs tp
+       JOIN exchanges e ON e.id = tp.exchange_id
+       WHERE tp.symbol = $1 AND tp.is_active = true
+       LIMIT 1`,
+      [symbol]
+    );
+
+    if (pairResult.rows.length === 0) {
+      res.status(404).json({ success: false, error: `No data found for ${symbol}` });
+      return;
+    }
+
+    const pairId = pairResult.rows[0].id;
+
+    // Fetch 1m candles (last ~7 days = ~10080 candles)
+    const candlesResult = await query(
+      `SELECT o.time, o.open, o.close
+       FROM ohlcv_1m o
+       WHERE o.pair_id = $1
+       ORDER BY o.time DESC
+       LIMIT 10080`,
+      [pairId]
+    );
+
+    const candles = candlesResult.rows.map((r: { time: string; open: string; close: string }) => ({
+      time: new Date(r.time),
+      open: parseFloat(r.open),
+      close: parseFloat(r.close),
+    })).reverse();
+
+    if (candles.length < 60) {
+      res.status(404).json({ success: false, error: 'Insufficient data for seasonality analysis' });
+      return;
+    }
+
+    // Aggregate by hour (0-23)
+    const hourlyBuckets: Array<{ returns: number[]; positive: number; negative: number }> = [];
+    for (let h = 0; h < 24; h++) {
+      hourlyBuckets.push({ returns: [], positive: 0, negative: 0 });
+    }
+
+    // Aggregate by day of week (0=Sun, 6=Sat)
+    const dailyBuckets: Array<{ returns: number[]; positive: number; negative: number }> = [];
+    for (let d = 0; d < 7; d++) {
+      dailyBuckets.push({ returns: [], positive: 0, negative: 0 });
+    }
+
+    for (const c of candles) {
+      if (c.open === 0) continue;
+      const ret = ((c.close - c.open) / c.open) * 100;
+      const hour = c.time.getUTCHours();
+      const day = c.time.getUTCDay();
+
+      hourlyBuckets[hour].returns.push(ret);
+      if (ret > 0) hourlyBuckets[hour].positive++;
+      else hourlyBuckets[hour].negative++;
+
+      dailyBuckets[day].returns.push(ret);
+      if (ret > 0) dailyBuckets[day].positive++;
+      else dailyBuckets[day].negative++;
+    }
+
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    const hourly = hourlyBuckets.map((b, hour) => {
+      const count = b.returns.length;
+      const avgReturn = count > 0
+        ? Math.round((b.returns.reduce((a, v) => a + v, 0) / count) * 10000) / 10000
+        : 0;
+      const winRate = count > 0 ? Math.round((b.positive / count) * 10000) / 100 : 0;
+      return { hour, avgReturn, winRate, count };
+    });
+
+    const daily = dailyBuckets.map((b, idx) => {
+      const count = b.returns.length;
+      const avgReturn = count > 0
+        ? Math.round((b.returns.reduce((a, v) => a + v, 0) / count) * 10000) / 10000
+        : 0;
+      const winRate = count > 0 ? Math.round((b.positive / count) * 10000) / 100 : 0;
+      return { day: dayNames[idx], avgReturn, winRate, count };
+    });
+
+    const response = {
+      success: true,
+      data: { symbol, hourly, daily },
+    };
+
+    // Cache for 5 minutes
+    await redis.set(cacheKey, JSON.stringify(response), 'EX', 300);
+
+    res.json(response);
+  } catch (err) {
+    logger.error('Seasonality error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 // GET /ticker/:symbol
 router.get('/ticker/:symbol', async (req: Request, res: Response) => {
   try {

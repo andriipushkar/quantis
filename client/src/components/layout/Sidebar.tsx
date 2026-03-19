@@ -22,6 +22,9 @@ import {
   Trophy,
   BookOpen,
   LayoutGrid,
+  Shield,
+  Repeat,
+  Calendar,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -69,11 +72,14 @@ const navItems: NavItem[] = [
   { icon: LineChart, labelKey: 'nav.chart', path: '/chart' },
   { icon: LayoutGrid, labelKey: 'nav.multiChart', path: '/multi-chart' },
   { icon: Search, labelKey: 'nav.screener', path: '/screener' },
+  { icon: Shield, labelKey: 'nav.tokenScanner', path: '/token-scanner' },
   { icon: Grid3X3, labelKey: 'nav.heatmap', path: '/heatmap' },
   { icon: GitCompare, labelKey: 'nav.correlation', path: '/correlation' },
+  { icon: Calendar, labelKey: 'nav.seasonality', path: '/seasonality' },
   { icon: Bot, labelKey: 'nav.copilot', path: '/copilot' },
   { icon: Signal, labelKey: 'nav.signals', path: '/signals', badge: true },
   { icon: CircleDollarSign, labelKey: 'nav.paperTrading', path: '/paper-trading' },
+  { icon: Repeat, labelKey: 'nav.dcaBot', path: '/dca' },
   { icon: Newspaper, labelKey: 'nav.news', path: '/news' },
   { icon: Anchor, labelKey: 'nav.whaleAlert', path: '/whale-alert' },
   { icon: GraduationCap, labelKey: 'nav.academy', path: '/academy' },

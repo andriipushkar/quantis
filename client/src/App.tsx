@@ -27,6 +27,9 @@ const Correlation = lazy(() => import('@/pages/Correlation'));
 const Leaderboard = lazy(() => import('@/pages/Leaderboard'));
 const Journal = lazy(() => import('@/pages/Journal'));
 const MultiChart = lazy(() => import('@/pages/MultiChart'));
+const TokenScanner = lazy(() => import('@/pages/TokenScanner'));
+const DCABot = lazy(() => import('@/pages/DCABot'));
+const Seasonality = lazy(() => import('@/pages/Seasonality'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
 const PageLoader: React.FC = () => (
@@ -88,6 +91,9 @@ const App: React.FC = () => {
             <Route path="/news" element={<News />} />
             <Route path="/whale-alert" element={<WhaleAlert />} />
             <Route path="/referral" element={<Referral />} />
+            <Route path="/token-scanner" element={<TokenScanner />} />
+            <Route path="/dca" element={<DCABot />} />
+            <Route path="/seasonality" element={<Seasonality />} />
           </Route>
 
           {/* Catch-all 404 */}

@@ -16,7 +16,10 @@
     "correlation": "Correlation",
     "leaderboard": "Leaderboard",
     "journal": "Journal",
-    "multiChart": "Multi-Chart"
+    "multiChart": "Multi-Chart",
+    "tokenScanner": "Token Scanner",
+    "dcaBot": "DCA Bot",
+    "seasonality": "Seasonality"
   },
   "auth": {
     "login": "Log In",
