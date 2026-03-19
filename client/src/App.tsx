@@ -32,6 +32,9 @@ const DCABot = lazy(() => import('@/pages/DCABot'));
 const Seasonality = lazy(() => import('@/pages/Seasonality'));
 const ExchangeHealth = lazy(() => import('@/pages/ExchangeHealth'));
 const FundingRates = lazy(() => import('@/pages/FundingRates'));
+const Narratives = lazy(() => import('@/pages/Narratives'));
+const MarketBreadth = lazy(() => import('@/pages/MarketBreadth'));
+const OpenInterest = lazy(() => import('@/pages/OpenInterest'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
 const PageLoader: React.FC = () => (
@@ -98,6 +101,9 @@ const App: React.FC = () => {
             <Route path="/seasonality" element={<Seasonality />} />
             <Route path="/exchange-health" element={<ExchangeHealth />} />
             <Route path="/funding-rates" element={<FundingRates />} />
+            <Route path="/narratives" element={<Narratives />} />
+            <Route path="/market-breadth" element={<MarketBreadth />} />
+            <Route path="/open-interest" element={<OpenInterest />} />
           </Route>
 
           {/* Catch-all 404 */}

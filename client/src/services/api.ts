@@ -348,4 +348,58 @@ export async function getFundingRates(): Promise<FundingRateData[]> {
   return res.data;
 }
 
+// --- Narratives ---
+
+export interface NarrativeData {
+  name: string;
+  score: number;
+  tokens: Array<{ symbol: string; change24h: number; price: number }>;
+  avgChange: number;
+  avgVolume: number;
+  avgRsi: number;
+  trend: 'rising' | 'falling' | 'stable';
+}
+
+export async function getNarratives(): Promise<NarrativeData[]> {
+  const res = await api.get<{ success: boolean; data: { narratives: NarrativeData[] } }>('/market/narratives');
+  return res.data.narratives;
+}
+
+// --- Market Breadth ---
+
+export interface MarketBreadthData {
+  score: number;
+  label: string;
+  advancing: number;
+  declining: number;
+  pctAboveSma: number;
+  avgRsi: number;
+  newHighs: number;
+  newLows: number;
+  breadthLine: number;
+}
+
+export async function getMarketBreadth(): Promise<MarketBreadthData> {
+  const res = await api.get<{ success: boolean; data: MarketBreadthData }>('/market/breadth');
+  return res.data;
+}
+
+// --- Open Interest ---
+
+export interface OpenInterestData {
+  symbol: string;
+  exchange: string;
+  openInterest: number;
+  oiChange24h: number;
+  oiChangePercent: number;
+  volume: number;
+  oiVolumeRatio: number;
+  priceChange24h: number;
+}
+
+export async function getOpenInterest(): Promise<OpenInterestData[]> {
+  const res = await api.get<{ success: boolean; data: OpenInterestData[] }>('/market/open-interest');
+  return res.data;
+}
+
 export { setToken, clearToken, getToken };

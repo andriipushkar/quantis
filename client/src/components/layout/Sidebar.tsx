@@ -27,6 +27,9 @@ import {
   Calendar,
   Server,
   Percent,
+  Layers,
+  Activity,
+  BarChart3,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -80,6 +83,9 @@ const navItems: NavItem[] = [
   { icon: Calendar, labelKey: 'nav.seasonality', path: '/seasonality' },
   { icon: Server, labelKey: 'nav.exchangeHealth', path: '/exchange-health' },
   { icon: Percent, labelKey: 'nav.fundingRates', path: '/funding-rates' },
+  { icon: Layers, labelKey: 'nav.narratives', path: '/narratives' },
+  { icon: Activity, labelKey: 'nav.marketBreadth', path: '/market-breadth' },
+  { icon: BarChart3, labelKey: 'nav.openInterest', path: '/open-interest' },
   { icon: Bot, labelKey: 'nav.copilot', path: '/copilot' },
   { icon: Signal, labelKey: 'nav.signals', path: '/signals', badge: true },
   { icon: CircleDollarSign, labelKey: 'nav.paperTrading', path: '/paper-trading' },

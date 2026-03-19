@@ -21,7 +21,10 @@
     "dcaBot": "DCA Bot",
     "seasonality": "Seasonality",
     "exchangeHealth": "Exchange Health",
-    "fundingRates": "Funding Rates"
+    "fundingRates": "Funding Rates",
+    "narratives": "Narratives",
+    "marketBreadth": "Market Breadth",
+    "openInterest": "Open Interest"
   },
   "auth": {
     "login": "Log In",

@@ -1068,4 +1068,414 @@ router.get('/funding-rates', async (_req: Request, res: Response) => {
   }
 });
 
+// --- Narrative sector mappings ---
+const NARRATIVE_SECTORS: Record<string, string[]> = {
+  'AI & ML': ['LINKUSDT', 'DOTUSDT'],
+  'Layer 1': ['ETHUSDT', 'SOLUSDT', 'AVAXUSDT', 'ADAUSDT'],
+  'Meme': ['DOGEUSDT'],
+  'DeFi': ['LINKUSDT'],
+  'Exchange': ['BNBUSDT'],
+  'Payments': ['XRPUSDT'],
+};
+
+// GET /narratives — Crypto sector/narrative performance tracker
+router.get('/narratives', async (_req: Request, res: Response) => {
+  try {
+    // Check cache (5 min)
+    const cached = await redis.get('market:narratives');
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+
+    // Fetch all tickers from Redis
+    const tickerKeys = await redis.keys('ticker:*:*');
+    const tickerMap: Record<string, { price: number; change24h: number; volume: number }> = {};
+
+    if (tickerKeys.length > 0) {
+      const pipeline = redis.pipeline();
+      for (const key of tickerKeys) {
+        pipeline.get(key);
+      }
+      const tickerResults = await pipeline.exec();
+      tickerKeys.forEach((key, i) => {
+        const value = tickerResults?.[i]?.[1];
+        if (typeof value === 'string') {
+          try {
+            const parsed = JSON.parse(value);
+            const parts = key.split(':');
+            tickerMap[parts[2]] = {
+              price: parsed.price ?? 0,
+              change24h: parsed.change24h ?? 0,
+              volume: parsed.volume ?? 0,
+            };
+          } catch { /* skip */ }
+        }
+      });
+    }
+
+    // Get active pairs for RSI computation
+    const pairsResult = await query(
+      `SELECT tp.id, tp.symbol
+       FROM trading_pairs tp
+       JOIN exchanges e ON e.id = tp.exchange_id
+       WHERE tp.is_active = true`
+    );
+
+    // Compute RSI for each symbol
+    const rsiMap: Record<string, number> = {};
+    for (const pair of pairsResult.rows) {
+      const candlesResult = await query(
+        `SELECT close FROM ohlcv_1m
+         WHERE pair_id = $1
+         ORDER BY time DESC
+         LIMIT 15`,
+        [pair.id]
+      );
+      const closes = candlesResult.rows.map((r: { close: string }) => parseFloat(r.close)).reverse();
+      let rsi = 50;
+      if (closes.length >= 15) {
+        let gains = 0;
+        let losses = 0;
+        for (let i = 1; i <= 14; i++) {
+          const diff = closes[i] - closes[i - 1];
+          if (diff > 0) gains += diff;
+          else losses += Math.abs(diff);
+        }
+        const avgGain = gains / 14;
+        const avgLoss = losses / 14;
+        rsi = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+      }
+      rsiMap[pair.symbol] = rsi;
+    }
+
+    // Build narratives
+    const narratives = Object.entries(NARRATIVE_SECTORS).map(([name, symbols]) => {
+      const tokens: Array<{ symbol: string; change24h: number; price: number }> = [];
+      let totalChange = 0;
+      let totalVolume = 0;
+      let totalRsi = 0;
+      let count = 0;
+
+      for (const sym of symbols) {
+        const ticker = tickerMap[sym];
+        if (ticker) {
+          tokens.push({ symbol: sym, change24h: ticker.change24h, price: ticker.price });
+          totalChange += ticker.change24h;
+          totalVolume += ticker.volume;
+          totalRsi += rsiMap[sym] ?? 50;
+          count++;
+        }
+      }
+
+      const avgChange = count > 0 ? totalChange / count : 0;
+      const avgVolume = count > 0 ? totalVolume / count : 0;
+      const avgRsi = count > 0 ? totalRsi / count : 50;
+
+      // Score 0-100: price momentum (40%), volume (30%), RSI strength (30%)
+      // Price momentum: map avgChange from [-10, 10] -> [0, 100]
+      const momentumScore = Math.max(0, Math.min(100, (avgChange + 10) * 5));
+      // Volume: higher volume = higher score, normalize relative
+      const volumeScore = Math.min(100, (avgVolume / 1e9) * 50);
+      // RSI strength: RSI 50 = 50, RSI 70 = 100, RSI 30 = 0
+      const rsiScore = Math.max(0, Math.min(100, ((avgRsi - 30) / 40) * 100));
+
+      const score = Math.round(momentumScore * 0.4 + volumeScore * 0.3 + rsiScore * 0.3);
+      const clampedScore = Math.max(0, Math.min(100, score));
+
+      const trend: 'rising' | 'falling' | 'stable' =
+        avgChange > 1 ? 'rising' :
+        avgChange < -1 ? 'falling' :
+        'stable';
+
+      return {
+        name,
+        score: clampedScore,
+        tokens,
+        avgChange: Math.round(avgChange * 100) / 100,
+        avgVolume: Math.round(avgVolume),
+        avgRsi: Math.round(avgRsi * 100) / 100,
+        trend,
+      };
+    });
+
+    // Sort by score desc
+    narratives.sort((a, b) => b.score - a.score);
+
+    const response = { success: true, data: { narratives } };
+    await redis.set('market:narratives', JSON.stringify(response), 'EX', 300);
+
+    res.json(response);
+  } catch (err) {
+    logger.error('Narratives error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// GET /breadth — Market breadth indicators
+router.get('/breadth', async (_req: Request, res: Response) => {
+  try {
+    // Check cache (5 min)
+    const cached = await redis.get('market:breadth');
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+
+    // Get active pairs
+    const pairsResult = await query(
+      `SELECT tp.id, tp.symbol, e.name as exchange
+       FROM trading_pairs tp
+       JOIN exchanges e ON e.id = tp.exchange_id
+       WHERE tp.is_active = true`
+    );
+
+    // Fetch tickers
+    const tickerKeys = await redis.keys('ticker:*:*');
+    const tickerMap: Record<string, { price: number; change24h: number; volume: number }> = {};
+
+    if (tickerKeys.length > 0) {
+      const pipeline = redis.pipeline();
+      for (const key of tickerKeys) {
+        pipeline.get(key);
+      }
+      const tickerResults = await pipeline.exec();
+      tickerKeys.forEach((key, i) => {
+        const value = tickerResults?.[i]?.[1];
+        if (typeof value === 'string') {
+          try {
+            const parsed = JSON.parse(value);
+            const parts = key.split(':');
+            tickerMap[`${parts[1]}:${parts[2]}`] = {
+              price: parsed.price ?? 0,
+              change24h: parsed.change24h ?? 0,
+              volume: parsed.volume ?? 0,
+            };
+          } catch { /* skip */ }
+        }
+      });
+    }
+
+    let advancing = 0;
+    let declining = 0;
+    let aboveSma = 0;
+    let totalRsi = 0;
+    let rsiCount = 0;
+    let newHighs = 0;
+    let newLows = 0;
+    let totalPairs = 0;
+
+    for (const pair of pairsResult.rows) {
+      const tickerKey = `${pair.exchange}:${pair.symbol.toUpperCase()}`;
+      const ticker = tickerMap[tickerKey];
+      if (!ticker) continue;
+
+      totalPairs++;
+
+      // Advance / decline
+      if (ticker.change24h > 0) advancing++;
+      else if (ticker.change24h < 0) declining++;
+
+      // Fetch last 20 candles for SMA20 + RSI + high/low
+      const candlesResult = await query(
+        `SELECT close, high, low FROM ohlcv_1m
+         WHERE pair_id = $1
+         ORDER BY time DESC
+         LIMIT 20`,
+        [pair.id]
+      );
+
+      const rows = candlesResult.rows;
+      const closes = rows.map((r: { close: string }) => parseFloat(r.close)).reverse();
+
+      // SMA20
+      if (closes.length >= 20) {
+        const sma20 = closes.reduce((a: number, b: number) => a + b, 0) / closes.length;
+        if (ticker.price > sma20) aboveSma++;
+      }
+
+      // RSI(14)
+      if (closes.length >= 15) {
+        let gains = 0;
+        let losses = 0;
+        for (let i = 1; i <= 14; i++) {
+          const diff = closes[closes.length - 15 + i] - closes[closes.length - 15 + i - 1];
+          if (diff > 0) gains += diff;
+          else losses += Math.abs(diff);
+        }
+        const avgGain = gains / 14;
+        const avgLoss = losses / 14;
+        const rsi = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+        totalRsi += rsi;
+        rsiCount++;
+      }
+
+      // New highs / lows: check if current price is at candle range extremes
+      const highs = rows.map((r: { high: string }) => parseFloat(r.high));
+      const lowsArr = rows.map((r: { low: string }) => parseFloat(r.low));
+      if (highs.length > 0) {
+        const maxHigh = Math.max(...highs);
+        const minLow = Math.min(...lowsArr);
+        if (ticker.price >= maxHigh * 0.999) newHighs++;
+        if (ticker.price <= minLow * 1.001) newLows++;
+      }
+    }
+
+    const avgRsi = rsiCount > 0 ? Math.round((totalRsi / rsiCount) * 100) / 100 : 50;
+    const pctAboveSma = totalPairs > 0 ? Math.round((aboveSma / totalPairs) * 10000) / 100 : 0;
+
+    // Breadth score: composite
+    // Advancing ratio (30%), pctAboveSma (30%), RSI mapping (20%), highsVsLows (20%)
+    const advRatio = totalPairs > 0 ? (advancing / totalPairs) * 100 : 50;
+    const rsiScore = Math.max(0, Math.min(100, ((avgRsi - 30) / 40) * 100));
+    const hlScore = totalPairs > 0
+      ? Math.max(0, Math.min(100, ((newHighs - newLows) / totalPairs + 0.5) * 100))
+      : 50;
+
+    const score = Math.round(advRatio * 0.3 + pctAboveSma * 0.3 + rsiScore * 0.2 + hlScore * 0.2);
+    const clampedScore = Math.max(0, Math.min(100, score));
+
+    let label: string;
+    if (clampedScore >= 70) label = 'Strong Bull';
+    else if (clampedScore >= 55) label = 'Moderate Bull';
+    else if (clampedScore >= 45) label = 'Neutral';
+    else if (clampedScore >= 30) label = 'Moderate Bear';
+    else label = 'Weak / Bearish';
+
+    const breadthLine = advancing - declining;
+
+    const response = {
+      success: true,
+      data: {
+        score: clampedScore,
+        label,
+        advancing,
+        declining,
+        pctAboveSma,
+        avgRsi,
+        newHighs,
+        newLows,
+        breadthLine,
+      },
+    };
+
+    await redis.set('market:breadth', JSON.stringify(response), 'EX', 300);
+    res.json(response);
+  } catch (err) {
+    logger.error('Market breadth error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// GET /open-interest — Simulated OI data
+router.get('/open-interest', async (_req: Request, res: Response) => {
+  try {
+    // Check cache (5 min)
+    const cached = await redis.get('market:open-interest');
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+
+    // Get active pairs
+    const pairsResult = await query(
+      `SELECT tp.id, tp.symbol, e.name as exchange
+       FROM trading_pairs tp
+       JOIN exchanges e ON e.id = tp.exchange_id
+       WHERE tp.is_active = true
+       ORDER BY tp.symbol ASC`
+    );
+
+    // Fetch tickers
+    const tickerKeys = await redis.keys('ticker:*:*');
+    const tickerMap: Record<string, { price: number; change24h: number; volume: number }> = {};
+
+    if (tickerKeys.length > 0) {
+      const pipeline = redis.pipeline();
+      for (const key of tickerKeys) {
+        pipeline.get(key);
+      }
+      const tickerResults = await pipeline.exec();
+      tickerKeys.forEach((key, i) => {
+        const value = tickerResults?.[i]?.[1];
+        if (typeof value === 'string') {
+          try {
+            const parsed = JSON.parse(value);
+            const parts = key.split(':');
+            tickerMap[`${parts[1]}:${parts[2]}`] = {
+              price: parsed.price ?? 0,
+              change24h: parsed.change24h ?? 0,
+              volume: parsed.volume ?? 0,
+            };
+          } catch { /* skip */ }
+        }
+      });
+    }
+
+    const oiData: Array<{
+      symbol: string;
+      exchange: string;
+      openInterest: number;
+      oiChange24h: number;
+      oiChangePercent: number;
+      volume: number;
+      oiVolumeRatio: number;
+      priceChange24h: number;
+    }> = [];
+
+    // Use a seeded pseudo-random based on symbol to keep values stable within cache window
+    function pseudoRandom(seed: string): number {
+      let h = 0;
+      for (let i = 0; i < seed.length; i++) {
+        h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
+      }
+      return (Math.abs(h) % 1000) / 1000;
+    }
+
+    for (const pair of pairsResult.rows) {
+      const tickerKey = `${pair.exchange}:${pair.symbol.toUpperCase()}`;
+      const ticker = tickerMap[tickerKey];
+      if (!ticker || ticker.volume === 0) continue;
+
+      // OI = recent avg volume * price * random(5, 20)
+      const rand = pseudoRandom(pair.symbol + new Date().toISOString().slice(0, 13));
+      const multiplier = 5 + rand * 15; // 5 to 20
+      const openInterest = ticker.volume * ticker.price * multiplier;
+
+      // OI change proportional to price change, with some variance
+      const randVariance = pseudoRandom(pair.symbol + 'var') * 2 - 0.5;
+      const oiChangePercent = ticker.change24h * (0.5 + randVariance);
+      const oiChange24h = openInterest * (oiChangePercent / 100);
+
+      // OI/Volume ratio
+      const volumeNotional = ticker.volume * ticker.price;
+      const oiVolumeRatio = volumeNotional > 0
+        ? Math.round((openInterest / volumeNotional) * 100) / 100
+        : 0;
+
+      oiData.push({
+        symbol: pair.symbol,
+        exchange: pair.exchange,
+        openInterest: Math.round(openInterest),
+        oiChange24h: Math.round(oiChange24h),
+        oiChangePercent: Math.round(oiChangePercent * 100) / 100,
+        volume: Math.round(volumeNotional),
+        oiVolumeRatio,
+        priceChange24h: ticker.change24h,
+      });
+    }
+
+    // Sort by OI descending
+    oiData.sort((a, b) => b.openInterest - a.openInterest);
+
+    const response = { success: true, data: oiData };
+    await redis.set('market:open-interest', JSON.stringify(response), 'EX', 300);
+
+    res.json(response);
+  } catch (err) {
+    logger.error('Open interest error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 export default router;
