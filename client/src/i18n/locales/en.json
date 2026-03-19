@@ -14,7 +14,9 @@
     "news": "News",
     "whaleAlert": "Whale Alert",
     "correlation": "Correlation",
-    "leaderboard": "Leaderboard"
+    "leaderboard": "Leaderboard",
+    "journal": "Journal",
+    "multiChart": "Multi-Chart"
   },
   "auth": {
     "login": "Log In",

@@ -8,6 +8,7 @@ import {
   Shield,
   Eye,
   ArrowUpRight,
+  Download,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
@@ -170,6 +171,38 @@ const Portfolio: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              const headers = ['Asset', 'Holdings', 'Entry Price', 'Current Price', 'Market Value', '24H Change %', 'Allocation %'];
+              const rows = positions.map((pos) => {
+                const allocationPct = totalValue > 0 ? ((pos.marketValue / totalValue) * 100).toFixed(1) : '0.0';
+                return [
+                  pos.asset,
+                  String(pos.amount),
+                  fmt(pos.price),
+                  fmt(pos.price),
+                  fmt(pos.marketValue),
+                  pos.change24h.toFixed(2),
+                  allocationPct,
+                ].join(',');
+              });
+              const csv = [headers.join(','), ...rows].join('\n');
+              const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = `quantis-portfolio-${new Date().toISOString().slice(0, 10)}.csv`;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              URL.revokeObjectURL(url);
+            }}
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Export CSV
+          </Button>
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
             <Eye className="w-3 h-3" />
             Demo Mode

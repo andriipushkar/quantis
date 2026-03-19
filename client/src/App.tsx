@@ -25,6 +25,8 @@ const Pricing = lazy(() => import('@/pages/Pricing'));
 const Referral = lazy(() => import('@/pages/Referral'));
 const Correlation = lazy(() => import('@/pages/Correlation'));
 const Leaderboard = lazy(() => import('@/pages/Leaderboard'));
+const Journal = lazy(() => import('@/pages/Journal'));
+const MultiChart = lazy(() => import('@/pages/MultiChart'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
 const PageLoader: React.FC = () => (
@@ -76,6 +78,8 @@ const App: React.FC = () => {
             <Route path="/copilot" element={<Copilot />} />
             <Route path="/signals" element={<Signals />} />
             <Route path="/paper-trading" element={<PaperTrading />} />
+            <Route path="/journal" element={<Journal />} />
+            <Route path="/multi-chart" element={<MultiChart />} />
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/portfolio" element={<Portfolio />} />
             <Route path="/settings" element={<Settings />} />

@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { TrendingUp, TrendingDown, BarChart3, Activity, Gauge } from 'lucide-react';
+import { TrendingUp, TrendingDown, BarChart3, Activity, Gauge, Star } from 'lucide-react';
 import { getTickers, getOHLCV, getFearGreed, type TickerData, type FearGreedData } from '@/services/api';
 import { useMarketStore } from '@/stores/market';
+import { useAuthStore } from '@/stores/auth';
 import { cn } from '@/utils/cn';
 
 // ---------------------------------------------------------------------------
@@ -280,9 +281,55 @@ const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const updateTickers = useMarketStore((s) => s.updateTickers);
   const tickers = useMarketStore((s) => s.tickers);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [userWatchlist, setUserWatchlist] = useState<Set<string>>(new Set());
+
+  // Fetch user watchlist symbols
+  const fetchUserWatchlist = useCallback(async () => {
+    if (!isAuthenticated) return;
+    try {
+      const token = localStorage.getItem('quantis_token');
+      const res = await fetch('/api/v1/watchlist', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          setUserWatchlist(new Set(json.data.map((item: { symbol: string }) => item.symbol)));
+        }
+      }
+    } catch {
+      // silent
+    }
+  }, [isAuthenticated]);
+
+  const toggleWatchlist = useCallback(async (symbol: string) => {
+    if (!isAuthenticated) return;
+    const token = localStorage.getItem('quantis_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const isInWatchlist = userWatchlist.has(symbol);
+    try {
+      const res = await fetch(`/api/v1/watchlist/${symbol}`, {
+        method: isInWatchlist ? 'DELETE' : 'POST',
+        headers,
+      });
+      if (res.ok) {
+        setUserWatchlist((prev) => {
+          const next = new Set(prev);
+          if (isInWatchlist) next.delete(symbol);
+          else next.add(symbol);
+          return next;
+        });
+      }
+    } catch {
+      // silent
+    }
+  }, [isAuthenticated, userWatchlist]);
 
   // Fetch tickers and poll every 5s
   const fetchAndStore = useCallback(async () => {
@@ -303,10 +350,22 @@ const Dashboard: React.FC = () => {
     return () => clearInterval(interval);
   }, [fetchAndStore]);
 
+  useEffect(() => {
+    fetchUserWatchlist();
+  }, [fetchUserWatchlist]);
+
   // Derived data
   const tickerList: TickerData[] = Array.from(tickers.values());
   const sorted = [...tickerList].sort((a, b) => b.volume - a.volume);
-  const watchlist = sorted.slice(0, 10);
+
+  // Show user watchlist pairs first, then remaining by volume
+  const watchlist = (() => {
+    const top = sorted.slice(0, 10);
+    if (!isAuthenticated || userWatchlist.size === 0) return top;
+    const inWl = top.filter((t) => userWatchlist.has(t.symbol));
+    const notInWl = top.filter((t) => !userWatchlist.has(t.symbol));
+    return [...inWl, ...notInWl];
+  })();
 
   const sortedByChange = [...tickerList].sort((a, b) => b.change24h - a.change24h);
   const topGainers = sortedByChange.slice(0, 5);
@@ -358,31 +417,50 @@ const Dashboard: React.FC = () => {
           <div className="flex gap-3 pb-2 min-w-max">
             {watchlist.map((t) => {
               const isPositive = t.change24h >= 0;
+              const isStarred = userWatchlist.has(t.symbol);
               return (
-                <button
+                <div
                   key={t.symbol}
-                  onClick={() => navigate(`/chart/${t.symbol}`)}
                   className={cn(
                     'flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all',
                     'bg-card border-border hover:border-primary/50 hover:shadow-sm',
-                    'cursor-pointer select-none shrink-0'
+                    'select-none shrink-0'
                   )}
                 >
-                  <span className="text-sm font-semibold text-foreground">
-                    {stripQuote(t.symbol)}
-                  </span>
-                  <span className="text-sm font-mono text-foreground">
-                    {formatPrice(t.price)}
-                  </span>
-                  <span
-                    className={cn(
-                      'text-xs font-mono font-medium',
-                      isPositive ? 'text-success' : 'text-danger'
-                    )}
+                  {isAuthenticated && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); toggleWatchlist(t.symbol); }}
+                      className="flex-shrink-0 transition-colors hover:scale-110"
+                      title={isStarred ? 'Remove from watchlist' : 'Add to watchlist'}
+                    >
+                      <Star
+                        className={cn(
+                          'w-4 h-4',
+                          isStarred ? 'text-primary fill-primary' : 'text-muted-foreground'
+                        )}
+                      />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => navigate(`/chart/${t.symbol}`)}
+                    className="flex items-center gap-3 cursor-pointer"
                   >
-                    {formatChange(t.change24h)}
-                  </span>
-                </button>
+                    <span className="text-sm font-semibold text-foreground">
+                      {stripQuote(t.symbol)}
+                    </span>
+                    <span className="text-sm font-mono text-foreground">
+                      {formatPrice(t.price)}
+                    </span>
+                    <span
+                      className={cn(
+                        'text-xs font-mono font-medium',
+                        isPositive ? 'text-success' : 'text-danger'
+                      )}
+                    >
+                      {formatChange(t.change24h)}
+                    </span>
+                  </button>
+                </div>
               );
             })}
           </div>

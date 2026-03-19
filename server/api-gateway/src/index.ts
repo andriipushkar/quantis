@@ -21,6 +21,7 @@ import newsRoutes from './routes/news.js';
 import whaleRoutes from './routes/whales.js';
 import referralRoutes from './routes/referral.js';
 import leaderboardRoutes from './routes/leaderboard.js';
+import journalRoutes from './routes/journal.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import Redis from 'ioredis';
 
@@ -58,6 +59,7 @@ app.use('/api/v1/news', newsRoutes);
 app.use('/api/v1/whales', whaleRoutes);
 app.use('/api/v1/referral', referralRoutes);
 app.use('/api/v1/leaderboard', leaderboardRoutes);
+app.use('/api/v1/journal', journalRoutes);
 
 // Health check
 app.get('/health', (_req, res) => {

@@ -20,6 +20,8 @@ import {
   Zap,
   GitCompare,
   Trophy,
+  BookOpen,
+  LayoutGrid,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -65,6 +67,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { icon: LayoutDashboard, labelKey: 'nav.dashboard', path: '/dashboard' },
   { icon: LineChart, labelKey: 'nav.chart', path: '/chart' },
+  { icon: LayoutGrid, labelKey: 'nav.multiChart', path: '/multi-chart' },
   { icon: Search, labelKey: 'nav.screener', path: '/screener' },
   { icon: Grid3X3, labelKey: 'nav.heatmap', path: '/heatmap' },
   { icon: GitCompare, labelKey: 'nav.correlation', path: '/correlation' },
@@ -76,6 +79,7 @@ const navItems: NavItem[] = [
   { icon: GraduationCap, labelKey: 'nav.academy', path: '/academy' },
   { icon: Trophy, labelKey: 'nav.leaderboard', path: '/leaderboard' },
   { icon: Bell, labelKey: 'nav.alerts', path: '/alerts' },
+  { icon: BookOpen, labelKey: 'nav.journal', path: '/journal' },
   { icon: Wallet, labelKey: 'nav.portfolio', path: '/portfolio' },
   { icon: SettingsIcon, labelKey: 'nav.settings', path: '/settings' },
 ];
