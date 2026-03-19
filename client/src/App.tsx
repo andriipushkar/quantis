@@ -23,6 +23,8 @@ const Login = lazy(() => import('@/pages/Login'));
 const Register = lazy(() => import('@/pages/Register'));
 const Pricing = lazy(() => import('@/pages/Pricing'));
 const Referral = lazy(() => import('@/pages/Referral'));
+const Correlation = lazy(() => import('@/pages/Correlation'));
+const Leaderboard = lazy(() => import('@/pages/Leaderboard'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
 const PageLoader: React.FC = () => (
@@ -70,6 +72,7 @@ const App: React.FC = () => {
             <Route path="/chart/:symbol?" element={<Chart />} />
             <Route path="/screener" element={<Screener />} />
             <Route path="/heatmap" element={<Heatmap />} />
+            <Route path="/correlation" element={<Correlation />} />
             <Route path="/copilot" element={<Copilot />} />
             <Route path="/signals" element={<Signals />} />
             <Route path="/paper-trading" element={<PaperTrading />} />
@@ -77,6 +80,7 @@ const App: React.FC = () => {
             <Route path="/portfolio" element={<Portfolio />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/academy" element={<Academy />} />
+            <Route path="/leaderboard" element={<Leaderboard />} />
             <Route path="/news" element={<News />} />
             <Route path="/whale-alert" element={<WhaleAlert />} />
             <Route path="/referral" element={<Referral />} />

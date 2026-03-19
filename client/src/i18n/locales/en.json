@@ -12,7 +12,9 @@
     "settings": "Settings",
     "academy": "Academy",
     "news": "News",
-    "whaleAlert": "Whale Alert"
+    "whaleAlert": "Whale Alert",
+    "correlation": "Correlation",
+    "leaderboard": "Leaderboard"
   },
   "auth": {
     "login": "Log In",

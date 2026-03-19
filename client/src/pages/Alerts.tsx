@@ -1,38 +1,106 @@
-import React, { useEffect, useState } from 'react';
-import { Bell, Plus, Trash2 } from 'lucide-react';
-import { getAlerts, createAlert, deleteAlert, type Alert } from '@/services/api';
+import React, { useEffect, useState, useCallback } from 'react';
+import { Bell, Plus, Trash2, Check, ChevronRight } from 'lucide-react';
+import { getAlerts, createAlert, deleteAlert, getPairs, getTicker, type Alert, type TradingPair } from '@/services/api';
 import { useAuthStore } from '@/stores/auth';
 import { cn } from '@/utils/cn';
+
+type ConditionType = 'price_above' | 'price_below' | 'rsi_above' | 'rsi_below' | 'price_change_pct';
+
+interface BuilderState {
+  step: number;
+  pair: string;
+  conditionType: ConditionType;
+  value: string;
+  channels: string[];
+  name: string;
+}
+
+const CONDITION_LABELS: Record<ConditionType, string> = {
+  price_above: 'Price Above',
+  price_below: 'Price Below',
+  rsi_above: 'RSI Above',
+  rsi_below: 'RSI Below',
+  price_change_pct: 'Price Change %',
+};
+
+const STEPS = ['Select Pair', 'Condition', 'Value', 'Channels', 'Name'];
+
+function generateName(pair: string, conditionType: ConditionType, value: string): string {
+  const symbol = pair.replace(/USDT$/, '');
+  switch (conditionType) {
+    case 'price_above': return `${symbol} above $${Number(value).toLocaleString()}`;
+    case 'price_below': return `${symbol} below $${Number(value).toLocaleString()}`;
+    case 'rsi_above': return `${symbol} RSI above ${value}`;
+    case 'rsi_below': return `${symbol} RSI below ${value}`;
+    case 'price_change_pct': return `${symbol} change ${value}%`;
+    default: return 'New Alert';
+  }
+}
 
 const Alerts: React.FC = () => {
   const { isAuthenticated } = useAuthStore();
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
-  const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
+  const [pairs, setPairs] = useState<TradingPair[]>([]);
+  const [currentPrice, setCurrentPrice] = useState<number | null>(null);
+  const [builder, setBuilder] = useState<BuilderState>({
+    step: 1,
+    pair: '',
+    conditionType: 'price_above',
+    value: '',
+    channels: ['push'],
+    name: '',
+  });
 
-  const fetchAlerts = async () => {
+  const fetchAlerts = useCallback(async () => {
     if (!isAuthenticated) { setLoading(false); return; }
     try {
       const data = await getAlerts();
       setAlerts(data);
     } catch { /* ignore */ }
     setLoading(false);
-  };
+  }, [isAuthenticated]);
 
-  useEffect(() => { fetchAlerts(); }, [isAuthenticated]);
+  useEffect(() => { fetchAlerts(); }, [fetchAlerts]);
+
+  useEffect(() => {
+    if (showCreate && pairs.length === 0) {
+      getPairs().then(setPairs).catch(() => {});
+    }
+  }, [showCreate, pairs.length]);
+
+  // Fetch current price when pair changes
+  useEffect(() => {
+    if (!builder.pair) { setCurrentPrice(null); return; }
+    getTicker(builder.pair).then((t) => setCurrentPrice(t.price)).catch(() => setCurrentPrice(null));
+  }, [builder.pair]);
+
+  // Auto-generate name when conditions change
+  useEffect(() => {
+    if (builder.pair && builder.value) {
+      setBuilder((prev) => ({
+        ...prev,
+        name: generateName(prev.pair, prev.conditionType, prev.value),
+      }));
+    }
+  }, [builder.pair, builder.conditionType, builder.value]);
 
   const handleCreate = async () => {
-    if (!name.trim()) return;
+    if (!builder.name.trim()) return;
     setCreating(true);
     try {
       await createAlert({
-        name: name.trim(),
-        conditions: { type: 'price_above', symbol: 'BTCUSDT', value: 70000 },
-        channels: ['push'],
+        name: builder.name.trim(),
+        conditions: {
+          type: builder.conditionType,
+          symbol: builder.pair,
+          value: parseFloat(builder.value),
+        },
+        channels: builder.channels,
       });
-      setName('');
+      setBuilder({ step: 1, pair: '', conditionType: 'price_above', value: '', channels: ['push'], name: '' });
       setShowCreate(false);
       fetchAlerts();
     } catch { /* ignore */ }
@@ -44,6 +112,26 @@ const Alerts: React.FC = () => {
       await deleteAlert(id);
       setAlerts((prev) => prev.filter((a) => a.id !== id));
     } catch { /* ignore */ }
+  };
+
+  const toggleChannel = (ch: string) => {
+    setBuilder((prev) => ({
+      ...prev,
+      channels: prev.channels.includes(ch)
+        ? prev.channels.filter((c) => c !== ch)
+        : [...prev.channels, ch],
+    }));
+  };
+
+  const canProceed = (): boolean => {
+    switch (builder.step) {
+      case 1: return !!builder.pair;
+      case 2: return !!builder.conditionType;
+      case 3: return !!builder.value && !isNaN(parseFloat(builder.value));
+      case 4: return builder.channels.length > 0;
+      case 5: return !!builder.name.trim();
+      default: return false;
+    }
   };
 
   if (!isAuthenticated) {
@@ -60,7 +148,12 @@ const Alerts: React.FC = () => {
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-bold text-foreground">Alerts</h1>
         <button
-          onClick={() => setShowCreate(!showCreate)}
+          onClick={() => {
+            setShowCreate(!showCreate);
+            if (!showCreate) {
+              setBuilder({ step: 1, pair: '', conditionType: 'price_above', value: '', channels: ['push'], name: '' });
+            }
+          }}
           className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
         >
           <Plus className="w-4 h-4" />
@@ -68,33 +161,216 @@ const Alerts: React.FC = () => {
         </button>
       </div>
 
+      {/* Visual Alert Builder */}
       {showCreate && (
-        <div className="bg-card border border-border rounded-xl p-5 space-y-3">
-          <input
-            type="text"
-            placeholder="Alert name (e.g. BTC above $70k)"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full h-10 px-4 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-          <div className="flex gap-2">
+        <div className="bg-card border border-border rounded-xl p-5 space-y-6">
+          {/* Stepper */}
+          <div className="flex items-center gap-0 overflow-x-auto pb-2">
+            {STEPS.map((label, idx) => {
+              const stepNum = idx + 1;
+              const isActive = builder.step === stepNum;
+              const isCompleted = builder.step > stepNum;
+              return (
+                <React.Fragment key={label}>
+                  {idx > 0 && (
+                    <div className={cn(
+                      'flex-1 h-0.5 min-w-[20px]',
+                      isCompleted ? 'bg-primary' : 'bg-border'
+                    )} />
+                  )}
+                  <button
+                    onClick={() => {
+                      if (stepNum <= builder.step) setBuilder((prev) => ({ ...prev, step: stepNum }));
+                    }}
+                    className="flex flex-col items-center gap-1 flex-shrink-0"
+                  >
+                    <div className={cn(
+                      'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all',
+                      isActive ? 'bg-primary text-primary-foreground' :
+                      isCompleted ? 'bg-primary/20 text-primary' :
+                      'bg-secondary text-muted-foreground'
+                    )}>
+                      {isCompleted ? <Check className="w-4 h-4" /> : stepNum}
+                    </div>
+                    <span className={cn(
+                      'text-[10px] whitespace-nowrap',
+                      isActive ? 'text-foreground font-medium' : 'text-muted-foreground'
+                    )}>
+                      {label}
+                    </span>
+                  </button>
+                </React.Fragment>
+              );
+            })}
+          </div>
+
+          {/* Step Content */}
+          <div className="min-h-[120px]">
+            {/* Step 1: Select Pair */}
+            {builder.step === 1 && (
+              <div className="space-y-3">
+                <h3 className="text-sm font-medium text-foreground">Select Trading Pair</h3>
+                <select
+                  value={builder.pair}
+                  onChange={(e) => setBuilder((prev) => ({ ...prev, pair: e.target.value }))}
+                  className="w-full h-10 px-4 bg-secondary border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="">Choose a pair...</option>
+                  {pairs.map((p) => (
+                    <option key={p.id} value={p.symbol}>{p.symbol} ({p.exchange})</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Step 2: Condition Type */}
+            {builder.step === 2 && (
+              <div className="space-y-3">
+                <h3 className="text-sm font-medium text-foreground">Condition Type</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {(Object.entries(CONDITION_LABELS) as [ConditionType, string][]).map(([key, label]) => (
+                    <button
+                      key={key}
+                      onClick={() => setBuilder((prev) => ({ ...prev, conditionType: key }))}
+                      className={cn(
+                        'flex items-center gap-3 px-4 py-3 rounded-lg border text-sm font-medium transition-all text-left',
+                        builder.conditionType === key
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border bg-secondary text-foreground hover:bg-secondary/80'
+                      )}
+                    >
+                      <div className={cn(
+                        'w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0',
+                        builder.conditionType === key ? 'border-primary' : 'border-muted-foreground'
+                      )}>
+                        {builder.conditionType === key && (
+                          <div className="w-2 h-2 rounded-full bg-primary" />
+                        )}
+                      </div>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Step 3: Value */}
+            {builder.step === 3 && (
+              <div className="space-y-3">
+                <h3 className="text-sm font-medium text-foreground">Threshold Value</h3>
+                {currentPrice !== null && (
+                  <p className="text-xs text-muted-foreground">
+                    Current {builder.pair.replace(/USDT$/, '')} price:{' '}
+                    <span className="text-foreground font-mono font-medium">
+                      ${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </p>
+                )}
+                <input
+                  type="number"
+                  placeholder={
+                    builder.conditionType === 'rsi_above' || builder.conditionType === 'rsi_below'
+                      ? 'e.g. 70'
+                      : builder.conditionType === 'price_change_pct'
+                      ? 'e.g. 5'
+                      : 'e.g. 75000'
+                  }
+                  value={builder.value}
+                  onChange={(e) => setBuilder((prev) => ({ ...prev, value: e.target.value }))}
+                  className="w-full h-10 px-4 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring font-mono"
+                />
+              </div>
+            )}
+
+            {/* Step 4: Channels */}
+            {builder.step === 4 && (
+              <div className="space-y-3">
+                <h3 className="text-sm font-medium text-foreground">Notification Channels</h3>
+                <div className="space-y-2">
+                  {/* Push */}
+                  <button
+                    onClick={() => toggleChannel('push')}
+                    className={cn(
+                      'w-full flex items-center gap-3 px-4 py-3 rounded-lg border text-sm transition-all text-left',
+                      builder.channels.includes('push')
+                        ? 'border-primary bg-primary/10'
+                        : 'border-border bg-secondary'
+                    )}
+                  >
+                    <div className={cn(
+                      'w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0',
+                      builder.channels.includes('push') ? 'border-primary bg-primary' : 'border-muted-foreground'
+                    )}>
+                      {builder.channels.includes('push') && <Check className="w-3 h-3 text-primary-foreground" />}
+                    </div>
+                    <span className="text-foreground font-medium">In-app Push</span>
+                  </button>
+                  {/* Email */}
+                  <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-border bg-secondary/50 opacity-60 cursor-not-allowed">
+                    <div className="w-5 h-5 rounded border-2 border-muted-foreground flex-shrink-0" />
+                    <span className="text-muted-foreground font-medium text-sm">Email</span>
+                    <span className="ml-auto text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded">Coming soon</span>
+                  </div>
+                  {/* Telegram */}
+                  <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-border bg-secondary/50 opacity-60 cursor-not-allowed">
+                    <div className="w-5 h-5 rounded border-2 border-muted-foreground flex-shrink-0" />
+                    <span className="text-muted-foreground font-medium text-sm">Telegram</span>
+                    <span className="ml-auto text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded">Coming soon</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Step 5: Name */}
+            {builder.step === 5 && (
+              <div className="space-y-3">
+                <h3 className="text-sm font-medium text-foreground">Alert Name</h3>
+                <p className="text-xs text-muted-foreground">Auto-generated from your conditions. Edit if needed.</p>
+                <input
+                  type="text"
+                  placeholder="Alert name"
+                  value={builder.name}
+                  onChange={(e) => setBuilder((prev) => ({ ...prev, name: e.target.value }))}
+                  className="w-full h-10 px-4 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Navigation */}
+          <div className="flex items-center justify-between pt-2 border-t border-border">
             <button
-              onClick={handleCreate}
-              disabled={creating || !name.trim()}
-              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50"
+              onClick={() => {
+                if (builder.step === 1) setShowCreate(false);
+                else setBuilder((prev) => ({ ...prev, step: prev.step - 1 }));
+              }}
+              className="px-4 py-2 rounded-lg bg-secondary text-foreground text-sm hover:bg-secondary/80 transition-colors"
             >
-              {creating ? 'Creating...' : 'Create'}
+              {builder.step === 1 ? 'Cancel' : 'Back'}
             </button>
-            <button
-              onClick={() => setShowCreate(false)}
-              className="px-4 py-2 rounded-lg bg-secondary text-foreground text-sm hover:bg-secondary/80"
-            >
-              Cancel
-            </button>
+            {builder.step < 5 ? (
+              <button
+                onClick={() => setBuilder((prev) => ({ ...prev, step: prev.step + 1 }))}
+                disabled={!canProceed()}
+                className="flex items-center gap-1 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-all"
+              >
+                Next
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            ) : (
+              <button
+                onClick={handleCreate}
+                disabled={creating || !canProceed()}
+                className="px-6 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-all"
+              >
+                {creating ? 'Creating...' : 'Create Alert'}
+              </button>
+            )}
           </div>
         </div>
       )}
 
+      {/* Alert List */}
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <Bell className="w-6 h-6 text-primary animate-pulse" />
@@ -117,11 +393,11 @@ const Alerts: React.FC = () => {
               <div className="flex items-center gap-2">
                 <span className={cn(
                   'w-2 h-2 rounded-full',
-                  alert.is_active ? 'bg-success' : 'bg-muted-foreground'
+                  alert.is_active ? 'bg-green-500' : 'bg-muted-foreground'
                 )} />
                 <button
                   onClick={() => handleDelete(alert.id)}
-                  className="p-2 rounded-lg text-muted-foreground hover:text-danger hover:bg-danger/10 transition-all"
+                  className="p-2 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-all"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>

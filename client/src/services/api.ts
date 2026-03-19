@@ -251,4 +251,45 @@ export async function deleteAlert(id: string) {
   return api.delete(`/alerts/${id}`);
 }
 
+// --- Correlation ---
+
+export interface CorrelationData {
+  pairs: string[];
+  matrix: number[][];
+}
+
+export async function getCorrelation(): Promise<CorrelationData> {
+  const res = await api.get<{ success: boolean; data: CorrelationData }>('/market/correlation');
+  return res.data;
+}
+
+// --- Leaderboard ---
+
+export interface PaperTrader {
+  rank: number;
+  displayName: string;
+  returnPct: number;
+  totalTrades: number;
+  winRate: number;
+}
+
+export interface StrategyPerformance {
+  strategy: string;
+  totalSignals: number;
+  avgConfidence: number;
+  winRate: number;
+  wins: number;
+  closed: number;
+}
+
+export async function getPaperLeaderboard(): Promise<PaperTrader[]> {
+  const res = await api.get<{ success: boolean; data: PaperTrader[] }>('/leaderboard/paper');
+  return res.data;
+}
+
+export async function getSignalLeaderboard(): Promise<StrategyPerformance[]> {
+  const res = await api.get<{ success: boolean; data: StrategyPerformance[] }>('/leaderboard/signals');
+  return res.data;
+}
+
 export { setToken, clearToken, getToken };

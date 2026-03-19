@@ -18,6 +18,8 @@ import {
   Newspaper,
   Anchor,
   Zap,
+  GitCompare,
+  Trophy,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -65,12 +67,14 @@ const navItems: NavItem[] = [
   { icon: LineChart, labelKey: 'nav.chart', path: '/chart' },
   { icon: Search, labelKey: 'nav.screener', path: '/screener' },
   { icon: Grid3X3, labelKey: 'nav.heatmap', path: '/heatmap' },
+  { icon: GitCompare, labelKey: 'nav.correlation', path: '/correlation' },
   { icon: Bot, labelKey: 'nav.copilot', path: '/copilot' },
   { icon: Signal, labelKey: 'nav.signals', path: '/signals', badge: true },
   { icon: CircleDollarSign, labelKey: 'nav.paperTrading', path: '/paper-trading' },
   { icon: Newspaper, labelKey: 'nav.news', path: '/news' },
   { icon: Anchor, labelKey: 'nav.whaleAlert', path: '/whale-alert' },
   { icon: GraduationCap, labelKey: 'nav.academy', path: '/academy' },
+  { icon: Trophy, labelKey: 'nav.leaderboard', path: '/leaderboard' },
   { icon: Bell, labelKey: 'nav.alerts', path: '/alerts' },
   { icon: Wallet, labelKey: 'nav.portfolio', path: '/portfolio' },
   { icon: SettingsIcon, labelKey: 'nav.settings', path: '/settings' },

@@ -444,6 +444,94 @@ router.get('/fear-greed', async (_req: Request, res: Response) => {
   }
 });
 
+// GET /correlation — Pearson correlation matrix between top pairs
+router.get('/correlation', async (_req: Request, res: Response) => {
+  try {
+    // Check Redis cache
+    const cached = await redis.get('market:correlation');
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+
+    // 1. Get all active trading pairs
+    const pairsResult = await query(
+      `SELECT tp.id, tp.symbol
+       FROM trading_pairs tp
+       JOIN exchanges e ON e.id = tp.exchange_id
+       WHERE tp.is_active = true
+       ORDER BY tp.symbol ASC
+       LIMIT 20`
+    );
+
+    // 2. Fetch last 100 1m closes for each pair
+    const pairCloses: Record<string, number[]> = {};
+    const validPairs: string[] = [];
+
+    for (const pair of pairsResult.rows) {
+      const candlesResult = await query(
+        `SELECT close FROM ohlcv_1m
+         WHERE pair_id = $1
+         ORDER BY time DESC
+         LIMIT 100`,
+        [pair.id]
+      );
+
+      const closes = candlesResult.rows.map((r: { close: string }) => parseFloat(r.close)).reverse();
+      if (closes.length > 50) {
+        pairCloses[pair.symbol] = closes;
+        validPairs.push(pair.symbol);
+      }
+    }
+
+    // 3. Compute NxN Pearson correlation matrix
+    const n = validPairs.length;
+    const matrix: number[][] = Array.from({ length: n }, () => Array(n).fill(0));
+
+    for (let i = 0; i < n; i++) {
+      matrix[i][i] = 1; // self-correlation
+      for (let j = i + 1; j < n; j++) {
+        const x = pairCloses[validPairs[i]];
+        const y = pairCloses[validPairs[j]];
+        const len = Math.min(x.length, y.length);
+
+        const xSlice = x.slice(x.length - len);
+        const ySlice = y.slice(y.length - len);
+
+        const xMean = xSlice.reduce((a, b) => a + b, 0) / len;
+        const yMean = ySlice.reduce((a, b) => a + b, 0) / len;
+
+        let num = 0;
+        let denomX = 0;
+        let denomY = 0;
+        for (let k = 0; k < len; k++) {
+          const dx = xSlice[k] - xMean;
+          const dy = ySlice[k] - yMean;
+          num += dx * dy;
+          denomX += dx * dx;
+          denomY += dy * dy;
+        }
+
+        const denom = Math.sqrt(denomX * denomY);
+        const r = denom === 0 ? 0 : num / denom;
+        const rounded = Math.round(r * 10000) / 10000;
+        matrix[i][j] = rounded;
+        matrix[j][i] = rounded;
+      }
+    }
+
+    const response = { success: true, data: { pairs: validPairs, matrix } };
+
+    // Cache for 5 minutes
+    await redis.set('market:correlation', JSON.stringify(response), 'EX', 300);
+
+    res.json(response);
+  } catch (err) {
+    logger.error('Correlation error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 // GET /ticker — all tickers
 router.get('/ticker', async (_req: Request, res: Response) => {
   try {
