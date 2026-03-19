@@ -21,7 +21,7 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { icon: LayoutDashboard, labelKey: 'nav.dashboard', path: '/' },
+  { icon: LayoutDashboard, labelKey: 'nav.dashboard', path: '/dashboard' },
   { icon: LineChart, labelKey: 'nav.chart', path: '/chart' },
   { icon: Search, labelKey: 'nav.screener', path: '/screener' },
   { icon: Signal, labelKey: 'nav.signals', path: '/signals' },
