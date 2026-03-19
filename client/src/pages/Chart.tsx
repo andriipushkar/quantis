@@ -53,6 +53,8 @@ const Chart: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showPairPicker, setShowPairPicker] = useState(false);
   const [indicators, setIndicators] = useState<Indicators | null>(null);
+  const [showEMA, setShowEMA] = useState(true);
+  const [showBB, setShowBB] = useState(true);
 
   // Sync URL param to store
   useEffect(() => {
@@ -182,22 +184,44 @@ const Chart: React.FC = () => {
           )}
         </div>
 
-        {/* Timeframe Selector */}
-        <div className="flex items-center gap-1 bg-card border border-border rounded-xl p-1">
-          {TIMEFRAMES.map((tf) => (
+        {/* Timeframe + Indicators */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1 bg-card border border-border rounded-xl p-1">
+            {TIMEFRAMES.map((tf) => (
+              <button
+                key={tf.value}
+                onClick={() => setSelectedTimeframe(tf.value)}
+                className={cn(
+                  'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                  selectedTimeframe === tf.value
+                    ? 'bg-primary/15 text-primary border border-primary/25'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                )}
+              >
+                {tf.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1 bg-card border border-border rounded-xl p-1">
             <button
-              key={tf.value}
-              onClick={() => setSelectedTimeframe(tf.value)}
+              onClick={() => setShowEMA(!showEMA)}
               className={cn(
                 'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
-                selectedTimeframe === tf.value
-                  ? 'bg-primary/15 text-primary border border-primary/25'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                showEMA ? 'bg-blue-500/15 text-blue-400 border border-blue-500/25' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
               )}
             >
-              {tf.label}
+              EMA
             </button>
-          ))}
+            <button
+              onClick={() => setShowBB(!showBB)}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                showBB ? 'bg-purple-500/15 text-purple-400 border border-purple-500/25' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+              )}
+            >
+              BB
+            </button>
+          </div>
         </div>
       </div>
 
@@ -213,6 +237,8 @@ const Chart: React.FC = () => {
             symbol={currentSymbol}
             timeframe={selectedTimeframe}
             data={candles}
+            showEMA={showEMA}
+            showBB={showBB}
             className="w-full h-full"
           />
         )}

@@ -24,6 +24,8 @@ interface TradingChartProps {
   symbol: string;
   timeframe: string;
   data: OHLCVData[];
+  showEMA?: boolean;
+  showBB?: boolean;
   className?: string;
 }
 
@@ -32,6 +34,37 @@ export interface TradingChartRef {
   candleSeries: ISeriesApi<'Candlestick'> | null;
   volumeSeries: ISeriesApi<'Histogram'> | null;
   update: (bar: OHLCVData) => void;
+}
+
+// Simple EMA calculation for chart overlay
+function calcEMA(data: number[], period: number): (number | null)[] {
+  const result: (number | null)[] = new Array(data.length).fill(null);
+  if (data.length < period) return result;
+  const k = 2 / (period + 1);
+  let sum = 0;
+  for (let i = 0; i < period; i++) sum += data[i];
+  result[period - 1] = sum / period;
+  for (let i = period; i < data.length; i++) {
+    result[i] = data[i] * k + (result[i - 1] as number) * (1 - k);
+  }
+  return result;
+}
+
+function calcBB(data: number[], period: number, mult: number): { upper: (number | null)[]; lower: (number | null)[] } {
+  const upper: (number | null)[] = new Array(data.length).fill(null);
+  const lower: (number | null)[] = new Array(data.length).fill(null);
+  if (data.length < period) return { upper, lower };
+  for (let i = period - 1; i < data.length; i++) {
+    let sum = 0;
+    for (let j = i - period + 1; j <= i; j++) sum += data[j];
+    const mean = sum / period;
+    let variance = 0;
+    for (let j = i - period + 1; j <= i; j++) variance += (data[j] - mean) ** 2;
+    const std = Math.sqrt(variance / period);
+    upper[i] = mean + mult * std;
+    lower[i] = mean - mult * std;
+  }
+  return { upper, lower };
 }
 
 function getChartColors(theme: 'dark' | 'light') {
@@ -54,11 +87,12 @@ function getChartColors(theme: 'dark' | 'light') {
 }
 
 export const TradingChart = forwardRef<TradingChartRef, TradingChartProps>(
-  ({ symbol, timeframe, data, className }, ref) => {
+  ({ symbol, timeframe, data, showEMA = true, showBB = true, className }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
     const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
     const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
+    const overlaySeriesRef = useRef<ISeriesApi<'Line'>[]>([]);
     const { theme } = useThemeStore();
 
     useImperativeHandle(ref, () => ({
@@ -199,8 +233,51 @@ export const TradingChart = forwardRef<TradingChartRef, TradingChartProps>(
 
       candleSeriesRef.current.setData(candleData);
       volumeSeriesRef.current.setData(volumeData);
+
+      // Remove old overlay series
+      for (const s of overlaySeriesRef.current) {
+        try { chartRef.current?.removeSeries(s); } catch { /* ignore */ }
+      }
+      overlaySeriesRef.current = [];
+
+      const closes = data.map((d) => d.close);
+      const times = data.map((d) => d.time as Time);
+      const chart = chartRef.current;
+      if (!chart) return;
+
+      // EMA overlay lines
+      if (showEMA) {
+        const ema9 = calcEMA(closes, 9);
+        const ema21 = calcEMA(closes, 21);
+
+        const ema9Series = chart.addLineSeries({ color: '#2962FF', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+        const ema9Data = ema9.map((v, i) => v !== null ? { time: times[i], value: v } : null).filter(Boolean) as { time: Time; value: number }[];
+        ema9Series.setData(ema9Data);
+        overlaySeriesRef.current.push(ema9Series);
+
+        const ema21Series = chart.addLineSeries({ color: '#FF6D00', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+        const ema21Data = ema21.map((v, i) => v !== null ? { time: times[i], value: v } : null).filter(Boolean) as { time: Time; value: number }[];
+        ema21Series.setData(ema21Data);
+        overlaySeriesRef.current.push(ema21Series);
+      }
+
+      // Bollinger Bands overlay
+      if (showBB) {
+        const bb = calcBB(closes, 20, 2);
+
+        const bbUpper = chart.addLineSeries({ color: 'rgba(136, 132, 216, 0.5)', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
+        const bbUpperData = bb.upper.map((v, i) => v !== null ? { time: times[i], value: v } : null).filter(Boolean) as { time: Time; value: number }[];
+        bbUpper.setData(bbUpperData);
+        overlaySeriesRef.current.push(bbUpper);
+
+        const bbLower = chart.addLineSeries({ color: 'rgba(136, 132, 216, 0.5)', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
+        const bbLowerData = bb.lower.map((v, i) => v !== null ? { time: times[i], value: v } : null).filter(Boolean) as { time: Time; value: number }[];
+        bbLower.setData(bbLowerData);
+        overlaySeriesRef.current.push(bbLower);
+      }
+
       chartRef.current?.timeScale().fitContent();
-    }, [data, symbol, timeframe]);
+    }, [data, symbol, timeframe, showEMA, showBB]);
 
     return (
       <div

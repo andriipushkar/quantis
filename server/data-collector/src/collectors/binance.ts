@@ -10,6 +10,18 @@ const DEFAULT_PAIRS = [
 ];
 
 const BINANCE_WS_BASE = 'wss://stream.binance.com:9443/stream';
+const BINANCE_REST_BASE = 'https://api.binance.com/api/v3';
+const BACKFILL_LIMIT = 1000;
+const BACKFILL_THRESHOLD = 500;
+const PAIR_DELAY_MS = 200;
+
+const AGGREGATE_TIMEFRAMES = [
+  { table: 'ohlcv_5m', bucket: '5 minutes' },
+  { table: 'ohlcv_15m', bucket: '15 minutes' },
+  { table: 'ohlcv_1h', bucket: '1 hour' },
+  { table: 'ohlcv_4h', bucket: '4 hours' },
+  { table: 'ohlcv_1d', bucket: '1 day' },
+] as const;
 
 interface BinanceCombinedMessage {
   stream: string;
@@ -32,6 +44,7 @@ export class BinanceCollector extends BaseCollector {
   private pairs: Map<string, TradingPair> = new Map();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pingInterval: ReturnType<typeof setInterval> | null = null;
+  private aggregateInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(db: Pool, redis: Redis) {
     super(db, redis);
@@ -54,7 +67,16 @@ export class BinanceCollector extends BaseCollector {
       return;
     }
 
+    await this.backfill();
     this.connect();
+
+    // Run timeframe aggregation every 5 minutes
+    this.aggregateInterval = setInterval(() => {
+      this.aggregateTimeframes().catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error('Scheduled aggregation failed', { error: message });
+      });
+    }, 5 * 60 * 1000);
   }
 
   async stop(): Promise<void> {
@@ -69,6 +91,11 @@ export class BinanceCollector extends BaseCollector {
     if (this.pingInterval) {
       clearInterval(this.pingInterval);
       this.pingInterval = null;
+    }
+
+    if (this.aggregateInterval) {
+      clearInterval(this.aggregateInterval);
+      this.aggregateInterval = null;
     }
 
     if (this.ws) {
@@ -276,6 +303,128 @@ export class BinanceCollector extends BaseCollector {
     }
 
     return 0;
+  }
+
+  /**
+   * Backfill historical 1m klines from Binance REST API for each trading pair.
+   * Only backfills pairs that have fewer than BACKFILL_THRESHOLD candles in the DB.
+   */
+  private async backfill(): Promise<void> {
+    this.logger.info('Starting historical data backfill');
+
+    for (const [symbol, pair] of this.pairs) {
+      try {
+        // Check existing candle count for this pair
+        const countResult = await this.db.query(
+          `SELECT COUNT(*) as cnt FROM ohlcv_1m WHERE pair_id = $1`,
+          [pair.id]
+        );
+        const existingCount = parseInt(countResult.rows[0].cnt, 10);
+
+        if (existingCount >= BACKFILL_THRESHOLD) {
+          this.logger.info(`Skipping backfill for ${symbol}: already has ${existingCount} candles`);
+          continue;
+        }
+
+        this.logger.info(`Backfilling ${symbol} (${existingCount} candles in DB)`);
+
+        const url = `${BINANCE_REST_BASE}/klines?symbol=${symbol}&interval=1m&limit=${BACKFILL_LIMIT}`;
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          this.logger.error(`Binance API error for ${symbol}`, {
+            status: response.status,
+            statusText: response.statusText,
+          });
+          continue;
+        }
+
+        const klines = (await response.json()) as unknown[][];
+
+        if (!Array.isArray(klines) || klines.length === 0) {
+          this.logger.warn(`No kline data returned for ${symbol}`);
+          continue;
+        }
+
+        // Batch insert all klines
+        const values: string[] = [];
+        const params: unknown[] = [];
+        let paramIndex = 1;
+
+        for (const k of klines) {
+          // Binance kline array: [openTime, open, high, low, close, volume, closeTime, quoteVolume, trades, ...]
+          const openTime = new Date(k[0] as number);
+          const open = parseFloat(k[1] as string);
+          const high = parseFloat(k[2] as string);
+          const low = parseFloat(k[3] as string);
+          const close = parseFloat(k[4] as string);
+          const volume = parseFloat(k[5] as string);
+          const trades = parseInt(k[8] as string, 10);
+
+          values.push(
+            `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7}, $${paramIndex + 8})`
+          );
+          params.push(openTime, pair.id, pair.exchange_id, open, high, low, close, volume, trades);
+          paramIndex += 9;
+        }
+
+        const sql = `
+          INSERT INTO ohlcv_1m (time, pair_id, exchange_id, open, high, low, close, volume, trades)
+          VALUES ${values.join(', ')}
+          ON CONFLICT (time, pair_id, exchange_id) DO NOTHING
+        `;
+
+        await this.db.query(sql, params);
+        this.logger.info(`Backfilled ${klines.length} candles for ${symbol}`);
+
+        // Small delay between pairs to respect rate limits
+        await new Promise((resolve) => setTimeout(resolve, PAIR_DELAY_MS));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Failed to backfill ${symbol}`, { error: message });
+        // Continue with next pair - don't crash
+      }
+    }
+
+    this.logger.info('Historical data backfill complete');
+  }
+
+  /**
+   * Aggregate 1m candles into higher timeframes (5m, 15m, 1h, 4h, 1d)
+   * using TimescaleDB time_bucket, first(), and last() functions.
+   */
+  async aggregateTimeframes(): Promise<void> {
+    this.logger.info('Starting timeframe aggregation');
+
+    for (const { table, bucket } of AGGREGATE_TIMEFRAMES) {
+      for (const [symbol, pair] of this.pairs) {
+        try {
+          const sql = `
+            INSERT INTO ${table} (time, pair_id, exchange_id, open, high, low, close, volume, trades)
+            SELECT
+              time_bucket('${bucket}', time) as bucket,
+              pair_id, exchange_id,
+              first(open, time), max(high), min(low), last(close, time),
+              sum(volume), sum(trades)
+            FROM ohlcv_1m
+            WHERE pair_id = $1 AND time > NOW() - INTERVAL '24 hours'
+            GROUP BY bucket, pair_id, exchange_id
+            ON CONFLICT (time, pair_id, exchange_id) DO UPDATE SET
+              high = EXCLUDED.high, low = EXCLUDED.low, close = EXCLUDED.close,
+              volume = EXCLUDED.volume, trades = EXCLUDED.trades
+          `;
+
+          await this.db.query(sql, [pair.id]);
+          this.logger.debug(`Aggregated ${table} for ${symbol}`);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          this.logger.error(`Failed to aggregate ${table} for ${symbol}`, { error: message });
+          // Continue with next pair/timeframe
+        }
+      }
+    }
+
+    this.logger.info('Timeframe aggregation complete');
   }
 
   private reconnect(): void {

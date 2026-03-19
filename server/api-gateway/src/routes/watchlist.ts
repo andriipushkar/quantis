@@ -6,128 +6,86 @@ import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
 
 const router = Router();
 
-const TIER_WATCHLIST_LIMITS: Record<string, number> = {
-  starter: 10,
-  trader: 50,
-  pro: 200,
-  institutional: -1, // unlimited
-};
-
-// All routes require authentication
 router.use(authenticate);
 
-// GET / - list user's watchlist with current prices
+// GET / — user's watchlist with live prices
 router.get('/', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const result = await query(
-      `SELECT w.id, w.pair_id, tp.symbol, tp.base_currency, tp.quote_currency, tp.exchange, w.created_at
-       FROM watchlist w
+      `SELECT tp.id, tp.symbol, tp.base_asset, tp.quote_asset, e.name as exchange, w.added_at
+       FROM watchlists w
        JOIN trading_pairs tp ON tp.id = w.pair_id
+       JOIN exchanges e ON e.id = tp.exchange_id
        WHERE w.user_id = $1
-       ORDER BY w.created_at DESC`,
+       ORDER BY w.added_at DESC`,
       [req.user!.id]
     );
 
-    // Enrich with current prices from Redis
     const items = await Promise.all(
       result.rows.map(async (row) => {
-        const tickerData = await redis.get(`ticker:${row.symbol}`);
-        const ticker = tickerData ? JSON.parse(tickerData) : null;
+        const exchanges = ['binance', 'bybit', 'okx'];
+        let ticker = null;
+        for (const ex of exchanges) {
+          const data = await redis.get(`ticker:${ex}:${row.symbol}`);
+          if (data) { ticker = JSON.parse(data); break; }
+        }
         return { ...row, ticker };
       })
     );
 
-    res.json({ watchlist: items });
+    res.json({ success: true, data: items });
   } catch (err) {
     logger.error('Get watchlist error', { error: (err as Error).message });
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
-// POST /:symbol - add pair to watchlist
+// POST /:symbol — add to watchlist
 router.post('/:symbol', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    // Check tier limit
-    const tier = req.user!.tier;
-    const limit = TIER_WATCHLIST_LIMITS[tier] ?? TIER_WATCHLIST_LIMITS.starter;
-
-    if (limit !== -1) {
-      const countResult = await query(
-        'SELECT COUNT(*) as count FROM watchlist WHERE user_id = $1',
-        [req.user!.id]
-      );
-      const currentCount = parseInt(countResult.rows[0].count, 10);
-      if (currentCount >= limit) {
-        res.status(403).json({
-          error: 'Watchlist limit reached',
-          limit,
-          current: currentCount,
-          tier,
-        });
-        return;
-      }
-    }
-
-    // Find the trading pair
-    const pairResult = await query(
-      'SELECT id, symbol FROM trading_pairs WHERE symbol = $1',
-      [req.params.symbol]
-    );
+    const symbol = req.params.symbol.toUpperCase();
+    const pairResult = await query('SELECT id FROM trading_pairs WHERE symbol = $1 LIMIT 1', [symbol]);
     if (pairResult.rows.length === 0) {
-      res.status(404).json({ error: 'Trading pair not found' });
+      res.status(404).json({ success: false, error: 'Trading pair not found' });
       return;
     }
 
-    const pairId = pairResult.rows[0].id;
-
-    // Check for duplicate
-    const existing = await query(
-      'SELECT id FROM watchlist WHERE user_id = $1 AND pair_id = $2',
-      [req.user!.id, pairId]
-    );
-    if (existing.rows.length > 0) {
-      res.status(409).json({ error: 'Pair already in watchlist' });
-      return;
-    }
-
-    const result = await query(
-      'INSERT INTO watchlist (user_id, pair_id) VALUES ($1, $2) RETURNING id, pair_id, created_at',
-      [req.user!.id, pairId]
-    );
-
-    res.status(201).json({ item: { ...result.rows[0], symbol: req.params.symbol } });
-  } catch (err) {
-    logger.error('Add to watchlist error', { error: (err as Error).message });
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// DELETE /:symbol - remove pair from watchlist
-router.delete('/:symbol', async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const pairResult = await query(
-      'SELECT id FROM trading_pairs WHERE symbol = $1',
-      [req.params.symbol]
-    );
-    if (pairResult.rows.length === 0) {
-      res.status(404).json({ error: 'Trading pair not found' });
-      return;
-    }
-
-    const result = await query(
-      'DELETE FROM watchlist WHERE user_id = $1 AND pair_id = $2 RETURNING id',
+    await query(
+      'INSERT INTO watchlists (user_id, pair_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
       [req.user!.id, pairResult.rows[0].id]
     );
 
-    if (result.rows.length === 0) {
-      res.status(404).json({ error: 'Pair not in watchlist' });
+    res.status(201).json({ success: true, message: 'Added to watchlist' });
+  } catch (err) {
+    logger.error('Add to watchlist error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// DELETE /:symbol — remove from watchlist
+router.delete('/:symbol', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+    const pairResult = await query('SELECT id FROM trading_pairs WHERE symbol = $1 LIMIT 1', [symbol]);
+    if (pairResult.rows.length === 0) {
+      res.status(404).json({ success: false, error: 'Trading pair not found' });
       return;
     }
 
-    res.json({ message: 'Removed from watchlist' });
+    const result = await query(
+      'DELETE FROM watchlists WHERE user_id = $1 AND pair_id = $2',
+      [req.user!.id, pairResult.rows[0].id]
+    );
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ success: false, error: 'Not in watchlist' });
+      return;
+    }
+
+    res.json({ success: true, message: 'Removed from watchlist' });
   } catch (err) {
     logger.error('Remove from watchlist error', { error: (err as Error).message });
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
