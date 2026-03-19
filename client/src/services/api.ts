@@ -292,4 +292,60 @@ export async function getSignalLeaderboard(): Promise<StrategyPerformance[]> {
   return res.data;
 }
 
+// --- Market Regime ---
+
+export interface MarketRegimeData {
+  regime: string;
+  confidence: number;
+  description: string;
+  recommended: string[];
+  avoid: string[];
+  indicators: {
+    adx: number;
+    rsi: number;
+    bbWidth: number;
+    atr: number;
+  };
+}
+
+export async function getMarketRegime(): Promise<MarketRegimeData> {
+  const res = await api.get<{ success: boolean; data: MarketRegimeData }>('/market/regime');
+  return res.data;
+}
+
+// --- Exchange Health ---
+
+export interface ExchangeHealthData {
+  exchange: string;
+  score: number;
+  label: 'Healthy' | 'Degraded' | 'Critical';
+  metrics: {
+    activePairs: number;
+    latestUpdate: string | null;
+    dataFreshness: number;
+    wsStatus: 'connected' | 'stale' | 'disconnected';
+  };
+}
+
+export async function getExchangeHealth(): Promise<ExchangeHealthData[]> {
+  const res = await api.get<{ success: boolean; data: ExchangeHealthData[] }>('/exchanges/health');
+  return res.data;
+}
+
+// --- Funding Rates ---
+
+export interface FundingRateData {
+  symbol: string;
+  exchange: string;
+  rate: number;
+  annualized: number;
+  nextFunding: string;
+  prediction: 'up' | 'down' | 'stable';
+}
+
+export async function getFundingRates(): Promise<FundingRateData[]> {
+  const res = await api.get<{ success: boolean; data: FundingRateData[] }>('/market/funding-rates');
+  return res.data;
+}
+
 export { setToken, clearToken, getToken };

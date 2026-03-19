@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { TrendingUp, TrendingDown, BarChart3, Activity, Gauge, Star } from 'lucide-react';
-import { getTickers, getOHLCV, getFearGreed, type TickerData, type FearGreedData } from '@/services/api';
+import { TrendingUp, TrendingDown, BarChart3, Activity, Gauge, Star, Crosshair } from 'lucide-react';
+import { getTickers, getOHLCV, getFearGreed, getMarketRegime, type TickerData, type FearGreedData, type MarketRegimeData } from '@/services/api';
 import { useMarketStore } from '@/stores/market';
 import { useAuthStore } from '@/stores/auth';
 import { cn } from '@/utils/cn';
@@ -274,6 +274,119 @@ const BtcMiniChart: React.FC = () => {
 };
 
 // ---------------------------------------------------------------------------
+// Market Regime Widget
+// ---------------------------------------------------------------------------
+
+function getRegimeColor(regime: string): string {
+  switch (regime) {
+    case 'trending_up': return 'text-green-400 bg-green-500/15';
+    case 'trending_down': return 'text-red-400 bg-red-500/15';
+    case 'ranging': return 'text-blue-400 bg-blue-500/15';
+    case 'high_volatility': return 'text-orange-400 bg-orange-500/15';
+    case 'low_volatility': return 'text-purple-400 bg-purple-500/15';
+    default: return 'text-muted-foreground bg-secondary';
+  }
+}
+
+function formatRegimeLabel(regime: string): string {
+  return regime.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+const MarketRegimeWidget: React.FC = () => {
+  const [data, setData] = useState<MarketRegimeData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchData() {
+      try {
+        const result = await getMarketRegime();
+        if (!cancelled) {
+          setData(result);
+          setLoading(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setError('Failed to load');
+          setLoading(false);
+        }
+      }
+    }
+    fetchData();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-40">
+        <span className="text-muted-foreground text-sm animate-pulse">Loading...</span>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="flex items-center justify-center h-40">
+        <span className="text-muted-foreground text-sm">{error || 'No data'}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Regime Badge */}
+      <div className="flex items-center justify-between">
+        <span className={cn(
+          'inline-flex px-2.5 py-1 rounded-full text-xs font-bold',
+          getRegimeColor(data.regime)
+        )}>
+          {formatRegimeLabel(data.regime)}
+        </span>
+        <span className="text-xs text-muted-foreground font-mono">{data.confidence}% conf.</span>
+      </div>
+
+      {/* Description */}
+      <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+        {data.description}
+      </p>
+
+      {/* Indicators */}
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">ADX</span>
+          <span className="font-mono text-foreground">{data.indicators.adx}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">RSI</span>
+          <span className="font-mono text-foreground">{data.indicators.rsi}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">BB Width</span>
+          <span className="font-mono text-foreground">{data.indicators.bbWidth}%</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">ATR</span>
+          <span className="font-mono text-foreground">{data.indicators.atr}</span>
+        </div>
+      </div>
+
+      {/* Recommended Strategies */}
+      <div className="pt-2 border-t border-border">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Recommended</p>
+        <div className="flex flex-wrap gap-1">
+          {data.recommended.map((s) => (
+            <span key={s} className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-500/10 text-green-400">
+              {s}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
 // Dashboard
 // ---------------------------------------------------------------------------
 
@@ -468,7 +581,7 @@ const Dashboard: React.FC = () => {
       </section>
 
       {/* ── Card Grid ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
         {/* Market Overview */}
         <div className="bg-card border border-border rounded-xl p-5">
           <div className="flex items-center gap-2 mb-4">
@@ -595,6 +708,17 @@ const Dashboard: React.FC = () => {
             </h3>
           </div>
           <FearGreedGauge />
+        </div>
+
+        {/* Market Regime */}
+        <div className="bg-card border border-border rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Crosshair className="w-4 h-4 text-primary" />
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+              Market Regime
+            </h3>
+          </div>
+          <MarketRegimeWidget />
         </div>
       </div>
     </div>

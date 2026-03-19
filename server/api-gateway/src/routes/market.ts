@@ -700,4 +700,372 @@ router.get('/ticker/:symbol', async (req: Request, res: Response) => {
   }
 });
 
+// GET /regime — Market regime classifier (BTCUSDT reference)
+router.get('/regime', async (_req: Request, res: Response) => {
+  try {
+    // Check cache (5 min)
+    const cached = await redis.get('market:regime');
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+
+    // Find BTCUSDT pair
+    const pairResult = await query(
+      `SELECT tp.id FROM trading_pairs tp
+       JOIN exchanges e ON e.id = tp.exchange_id
+       WHERE tp.symbol = 'BTCUSDT' AND tp.is_active = true
+       LIMIT 1`
+    );
+
+    if (pairResult.rows.length === 0) {
+      res.status(404).json({ success: false, error: 'BTCUSDT not found' });
+      return;
+    }
+
+    const pairId = pairResult.rows[0].id;
+
+    // Fetch last 60 1h candles for robust indicator computation
+    const candlesResult = await query(
+      `SELECT o.high, o.low, o.close, o.volume FROM ohlcv_1h o
+       WHERE o.pair_id = $1
+       ORDER BY o.time DESC
+       LIMIT 60`,
+      [pairId]
+    );
+
+    const candles = candlesResult.rows
+      .map((r: { high: string; low: string; close: string; volume: string }) => ({
+        high: parseFloat(r.high),
+        low: parseFloat(r.low),
+        close: parseFloat(r.close),
+        volume: parseFloat(r.volume),
+      }))
+      .reverse();
+
+    if (candles.length < 20) {
+      res.status(404).json({ success: false, error: 'Insufficient data for regime detection' });
+      return;
+    }
+
+    const closes = candles.map((c) => c.close);
+    const highs = candles.map((c) => c.high);
+    const lows = candles.map((c) => c.low);
+    const volumes = candles.map((c) => c.volume);
+
+    // --- RSI(14) ---
+    let rsi = 50;
+    if (closes.length >= 15) {
+      let gains = 0;
+      let losses = 0;
+      const offset = closes.length - 15;
+      for (let i = 1; i <= 14; i++) {
+        const diff = closes[offset + i] - closes[offset + i - 1];
+        if (diff > 0) gains += diff;
+        else losses += Math.abs(diff);
+      }
+      const avgGain = gains / 14;
+      const avgLoss = losses / 14;
+      rsi = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+    }
+
+    // --- EMA50 ---
+    let ema50 = closes[0];
+    const k50 = 2 / (50 + 1);
+    for (let i = 1; i < closes.length; i++) {
+      ema50 = closes[i] * k50 + ema50 * (1 - k50);
+    }
+
+    // --- ADX proxy: ratio of directional movement to range over last 14 candles ---
+    let adxProxy = 20;
+    const adxLen = Math.min(14, candles.length - 1);
+    if (adxLen >= 5) {
+      let plusDM = 0;
+      let minusDM = 0;
+      let trSum = 0;
+      const start = candles.length - adxLen - 1;
+      for (let i = start + 1; i < candles.length; i++) {
+        const upMove = highs[i] - highs[i - 1];
+        const downMove = lows[i - 1] - lows[i];
+        if (upMove > downMove && upMove > 0) plusDM += upMove;
+        if (downMove > upMove && downMove > 0) minusDM += downMove;
+        const tr = Math.max(
+          highs[i] - lows[i],
+          Math.abs(highs[i] - closes[i - 1]),
+          Math.abs(lows[i] - closes[i - 1])
+        );
+        trSum += tr;
+      }
+      if (trSum > 0) {
+        const plusDI = (plusDM / trSum) * 100;
+        const minusDI = (minusDM / trSum) * 100;
+        const diSum = plusDI + minusDI;
+        const dx = diSum > 0 ? (Math.abs(plusDI - minusDI) / diSum) * 100 : 0;
+        adxProxy = dx;
+      }
+    }
+
+    // --- Bollinger Bandwidth (20-period) ---
+    const bbPeriod = Math.min(20, closes.length);
+    const bbSlice = closes.slice(closes.length - bbPeriod);
+    const bbMean = bbSlice.reduce((a, b) => a + b, 0) / bbPeriod;
+    const bbStd = Math.sqrt(bbSlice.reduce((a, v) => a + (v - bbMean) ** 2, 0) / bbPeriod);
+    const bbWidth = bbMean > 0 ? (bbStd * 4) / bbMean * 100 : 0; // as percentage
+
+    // --- ATR(14) and ATR average ---
+    const atrPeriods: number[] = [];
+    for (let i = 1; i < candles.length; i++) {
+      const tr = Math.max(
+        highs[i] - lows[i],
+        Math.abs(highs[i] - closes[i - 1]),
+        Math.abs(lows[i] - closes[i - 1])
+      );
+      atrPeriods.push(tr);
+    }
+    const recentATR = atrPeriods.length >= 14
+      ? atrPeriods.slice(-14).reduce((a, b) => a + b, 0) / 14
+      : atrPeriods.reduce((a, b) => a + b, 0) / (atrPeriods.length || 1);
+    const avgATR = atrPeriods.length > 0
+      ? atrPeriods.reduce((a, b) => a + b, 0) / atrPeriods.length
+      : recentATR;
+    const atrRatio = avgATR > 0 ? recentATR / avgATR : 1;
+
+    // --- Higher highs / lower lows detection (last 5 candles) ---
+    const last5 = candles.slice(-5);
+    let higherHighs = 0;
+    let lowerLows = 0;
+    for (let i = 1; i < last5.length; i++) {
+      if (last5[i].high > last5[i - 1].high) higherHighs++;
+      if (last5[i].low < last5[i - 1].low) lowerLows++;
+    }
+
+    // --- Volume trend (declining?) ---
+    const recentVol = volumes.slice(-7);
+    const olderVol = volumes.slice(-14, -7);
+    const avgRecentVol = recentVol.length > 0 ? recentVol.reduce((a, b) => a + b, 0) / recentVol.length : 0;
+    const avgOlderVol = olderVol.length > 0 ? olderVol.reduce((a, b) => a + b, 0) / olderVol.length : avgRecentVol;
+    const volumeDeclining = avgOlderVol > 0 ? avgRecentVol / avgOlderVol < 0.8 : false;
+
+    // --- BB expanding/contracting ---
+    let bbExpanding = false;
+    let bbContracting = false;
+    if (closes.length >= 30) {
+      const olderSlice = closes.slice(closes.length - 30, closes.length - 10);
+      const olderMean = olderSlice.reduce((a, b) => a + b, 0) / olderSlice.length;
+      const olderStd = Math.sqrt(olderSlice.reduce((a, v) => a + (v - olderMean) ** 2, 0) / olderSlice.length);
+      const olderBBW = olderMean > 0 ? (olderStd * 4) / olderMean * 100 : 0;
+      bbExpanding = bbWidth > olderBBW * 1.3;
+      bbContracting = bbWidth < olderBBW * 0.7;
+    }
+
+    const currentPrice = closes[closes.length - 1];
+
+    // --- Classify regime ---
+    let regime: string;
+    let confidence: number;
+    let description: string;
+    let recommended: string[];
+    let avoid: string[];
+
+    if (bbExpanding && atrRatio > 2) {
+      regime = 'high_volatility';
+      confidence = Math.min(95, 60 + atrRatio * 10);
+      description = 'Market is experiencing high volatility with expanding Bollinger Bands and ATR spikes. Expect large price swings.';
+      recommended = ['Straddle/Strangle', 'Scalping breakouts', 'Reduced position sizing'];
+      avoid = ['Grid trading', 'Tight stop-losses', 'High leverage'];
+    } else if (bbContracting && volumeDeclining) {
+      regime = 'low_volatility';
+      confidence = Math.min(90, 55 + (1 - atrRatio) * 30);
+      description = 'Market is in a low volatility compression phase with declining volume. A breakout may be imminent.';
+      recommended = ['Breakout anticipation', 'Accumulation', 'Options buying'];
+      avoid = ['Mean reversion', 'Scalping', 'Large positions'];
+    } else if (currentPrice > ema50 && adxProxy > 25 && higherHighs >= 3) {
+      regime = 'trending_up';
+      confidence = Math.min(95, 50 + adxProxy);
+      description = 'Strong uptrend detected. Price is above EMA50 with strong directional movement and consecutive higher highs.';
+      recommended = ['Trend following long', 'Pullback buying', 'Momentum strategies'];
+      avoid = ['Short selling', 'Mean reversion shorts', 'Counter-trend entries'];
+    } else if (currentPrice < ema50 && adxProxy > 25 && lowerLows >= 3) {
+      regime = 'trending_down';
+      confidence = Math.min(95, 50 + adxProxy);
+      description = 'Strong downtrend detected. Price is below EMA50 with strong directional movement and consecutive lower lows.';
+      recommended = ['Trend following short', 'Rally selling', 'Hedging'];
+      avoid = ['Buying dips', 'Long-only strategies', 'High leverage longs'];
+    } else if (adxProxy < 20) {
+      regime = 'ranging';
+      confidence = Math.min(85, 50 + (20 - adxProxy) * 2);
+      description = 'Market is range-bound with weak directional movement. Price is oscillating without a clear trend.';
+      recommended = ['Mean reversion', 'Range trading', 'Grid bots'];
+      avoid = ['Trend following', 'Breakout strategies', 'Momentum plays'];
+    } else {
+      // Transitional state
+      regime = 'ranging';
+      confidence = 40;
+      description = 'Market is in a transitional phase. Indicators show mixed signals between trending and ranging conditions.';
+      recommended = ['Reduced position sizing', 'Wait for confirmation', 'Scalping'];
+      avoid = ['Large directional bets', 'High leverage'];
+    }
+
+    confidence = Math.round(Math.max(0, Math.min(100, confidence)));
+
+    const response = {
+      success: true,
+      data: {
+        regime,
+        confidence,
+        description,
+        recommended,
+        avoid,
+        indicators: {
+          adx: Math.round(adxProxy * 100) / 100,
+          rsi: Math.round(rsi * 100) / 100,
+          bbWidth: Math.round(bbWidth * 100) / 100,
+          atr: Math.round(recentATR * 100) / 100,
+        },
+      },
+    };
+
+    // Cache 5 min
+    await redis.set('market:regime', JSON.stringify(response), 'EX', 300);
+
+    res.json(response);
+  } catch (err) {
+    logger.error('Regime error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// GET /funding-rates — Simulated funding rates based on RSI momentum
+router.get('/funding-rates', async (_req: Request, res: Response) => {
+  try {
+    // Check cache (5 min)
+    const cached = await redis.get('market:funding-rates');
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+
+    // Get active pairs
+    const pairsResult = await query(
+      `SELECT tp.id, tp.symbol, e.name as exchange
+       FROM trading_pairs tp
+       JOIN exchanges e ON e.id = tp.exchange_id
+       WHERE tp.is_active = true
+       ORDER BY tp.symbol ASC`
+    );
+
+    // Fetch tickers from Redis
+    const tickerKeys = await redis.keys('ticker:*:*');
+    const tickerMap: Record<string, { price: number; change24h: number; volume: number; timestamp?: number }> = {};
+
+    if (tickerKeys.length > 0) {
+      const pipeline = redis.pipeline();
+      for (const key of tickerKeys) {
+        pipeline.get(key);
+      }
+      const tickerResults = await pipeline.exec();
+      tickerKeys.forEach((key, i) => {
+        const value = tickerResults?.[i]?.[1];
+        if (typeof value === 'string') {
+          try {
+            const parsed = JSON.parse(value);
+            const parts = key.split(':');
+            tickerMap[`${parts[1]}:${parts[2]}`] = {
+              price: parsed.price ?? 0,
+              change24h: parsed.change24h ?? 0,
+              volume: parsed.volume ?? 0,
+              timestamp: parsed.timestamp,
+            };
+          } catch { /* skip */ }
+        }
+      });
+    }
+
+    const rates: Array<{
+      symbol: string;
+      exchange: string;
+      rate: number;
+      annualized: number;
+      nextFunding: string;
+      prediction: 'up' | 'down' | 'stable';
+    }> = [];
+
+    for (const pair of pairsResult.rows) {
+      const tickerKey = `${pair.exchange}:${pair.symbol.toUpperCase()}`;
+      const ticker = tickerMap[tickerKey];
+      if (!ticker) continue;
+
+      // Compute RSI(14)
+      const candlesResult = await query(
+        `SELECT close FROM ohlcv_1m
+         WHERE pair_id = $1
+         ORDER BY time DESC
+         LIMIT 15`,
+        [pair.id]
+      );
+
+      const closes = candlesResult.rows.map((r: { close: string }) => parseFloat(r.close)).reverse();
+      let rsi = 50;
+      if (closes.length >= 15) {
+        let gains = 0;
+        let losses = 0;
+        for (let i = 1; i <= 14; i++) {
+          const diff = closes[i] - closes[i - 1];
+          if (diff > 0) gains += diff;
+          else losses += Math.abs(diff);
+        }
+        const avgGain = gains / 14;
+        const avgLoss = losses / 14;
+        rsi = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+      }
+
+      // Compute funding rate from RSI
+      // RSI > 60: positive funding (longs pay shorts)
+      // RSI < 40: negative funding (shorts pay longs)
+      // Magnitude proportional to RSI distance from 50, capped at ±0.1%
+      const rsiDistance = rsi - 50;
+      let rate = (rsiDistance / 50) * 0.1; // max ±0.1%
+      rate = Math.max(-0.1, Math.min(0.1, rate));
+      rate = Math.round(rate * 10000) / 10000;
+
+      // Annualized: 3 funding periods per day * 365
+      const annualized = Math.round(rate * 3 * 365 * 100) / 100;
+
+      // Next funding: next 8-hour mark
+      const now = new Date();
+      const hours = now.getUTCHours();
+      const nextHour = hours < 8 ? 8 : hours < 16 ? 16 : 24;
+      const nextFundingDate = new Date(now);
+      nextFundingDate.setUTCHours(nextHour % 24, 0, 0, 0);
+      if (nextHour === 24) nextFundingDate.setUTCDate(nextFundingDate.getUTCDate() + 1);
+
+      // Prediction based on momentum
+      const prediction: 'up' | 'down' | 'stable' =
+        rsi > 60 ? 'up' :
+        rsi < 40 ? 'down' :
+        'stable';
+
+      rates.push({
+        symbol: pair.symbol,
+        exchange: pair.exchange,
+        rate,
+        annualized,
+        nextFunding: nextFundingDate.toISOString(),
+        prediction,
+      });
+    }
+
+    // Sort by absolute rate descending
+    rates.sort((a, b) => Math.abs(b.rate) - Math.abs(a.rate));
+
+    const response = { success: true, data: rates };
+    await redis.set('market:funding-rates', JSON.stringify(response), 'EX', 300);
+
+    res.json(response);
+  } catch (err) {
+    logger.error('Funding rates error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 export default router;

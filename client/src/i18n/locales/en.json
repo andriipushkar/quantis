@@ -19,7 +19,9 @@
     "multiChart": "Multi-Chart",
     "tokenScanner": "Token Scanner",
     "dcaBot": "DCA Bot",
-    "seasonality": "Seasonality"
+    "seasonality": "Seasonality",
+    "exchangeHealth": "Exchange Health",
+    "fundingRates": "Funding Rates"
   },
   "auth": {
     "login": "Log In",

@@ -30,6 +30,8 @@ const MultiChart = lazy(() => import('@/pages/MultiChart'));
 const TokenScanner = lazy(() => import('@/pages/TokenScanner'));
 const DCABot = lazy(() => import('@/pages/DCABot'));
 const Seasonality = lazy(() => import('@/pages/Seasonality'));
+const ExchangeHealth = lazy(() => import('@/pages/ExchangeHealth'));
+const FundingRates = lazy(() => import('@/pages/FundingRates'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
 const PageLoader: React.FC = () => (
@@ -94,6 +96,8 @@ const App: React.FC = () => {
             <Route path="/token-scanner" element={<TokenScanner />} />
             <Route path="/dca" element={<DCABot />} />
             <Route path="/seasonality" element={<Seasonality />} />
+            <Route path="/exchange-health" element={<ExchangeHealth />} />
+            <Route path="/funding-rates" element={<FundingRates />} />
           </Route>
 
           {/* Catch-all 404 */}

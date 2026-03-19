@@ -24,6 +24,7 @@ import leaderboardRoutes from './routes/leaderboard.js';
 import journalRoutes from './routes/journal.js';
 import tokenScannerRoutes from './routes/token-scanner.js';
 import dcaRoutes from './routes/dca.js';
+import exchangeHealthRoutes from './routes/exchange-health.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import Redis from 'ioredis';
 
@@ -64,6 +65,7 @@ app.use('/api/v1/leaderboard', leaderboardRoutes);
 app.use('/api/v1/journal', journalRoutes);
 app.use('/api/v1/scanner', tokenScannerRoutes);
 app.use('/api/v1/dca', dcaRoutes);
+app.use('/api/v1/exchanges', exchangeHealthRoutes);
 
 // Health check
 app.get('/health', (_req, res) => {
