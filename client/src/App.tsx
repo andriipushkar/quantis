@@ -11,6 +11,7 @@ const Chart = lazy(() => import('@/pages/Chart'));
 const Screener = lazy(() => import('@/pages/Screener'));
 const Signals = lazy(() => import('@/pages/Signals'));
 const Alerts = lazy(() => import('@/pages/Alerts'));
+const Portfolio = lazy(() => import('@/pages/Portfolio'));
 const Settings = lazy(() => import('@/pages/Settings'));
 const Login = lazy(() => import('@/pages/Login'));
 const Register = lazy(() => import('@/pages/Register'));
@@ -60,6 +61,7 @@ const App: React.FC = () => {
             <Route path="/screener" element={<Screener />} />
             <Route path="/signals" element={<Signals />} />
             <Route path="/alerts" element={<Alerts />} />
+            <Route path="/portfolio" element={<Portfolio />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
         </Routes>

@@ -8,7 +8,7 @@ import {
   Signal,
   Bell,
   Wallet,
-  Settings,
+  Settings as SettingsIcon,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
@@ -27,7 +27,7 @@ const navItems: NavItem[] = [
   { icon: Signal, labelKey: 'nav.signals', path: '/signals' },
   { icon: Bell, labelKey: 'nav.alerts', path: '/alerts' },
   { icon: Wallet, labelKey: 'nav.portfolio', path: '/portfolio' },
-  { icon: Settings, labelKey: 'nav.settings', path: '/settings' },
+  { icon: SettingsIcon, labelKey: 'nav.settings', path: '/settings' },
 ];
 
 interface SidebarProps {

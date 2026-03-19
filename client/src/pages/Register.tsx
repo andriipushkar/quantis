@@ -39,7 +39,7 @@ const Register: React.FC = () => {
     try {
       clearError();
       await registerUser(data.email, data.password);
-      navigate('/');
+      navigate('/dashboard');
     } catch {
       // Error is handled by the store
     }

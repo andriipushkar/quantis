@@ -33,7 +33,7 @@ const Login: React.FC = () => {
     try {
       clearError();
       await login(data.email, data.password);
-      navigate('/');
+      navigate('/dashboard');
     } catch {
       // Error is handled by the store
     }
