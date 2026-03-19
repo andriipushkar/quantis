@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { cn } from '@/utils/cn';
 import { TradingChart, type TradingChartRef, type OHLCVData } from '@/components/charts/TradingChart';
+import { RSIChart } from '@/components/charts/RSIChart';
 import { useMarketStore, TIMEFRAMES } from '@/stores/market';
 import { getOHLCV, getTickers, getPairs, type TradingPair } from '@/services/api';
 import { Activity, ChevronDown, BarChart3 } from 'lucide-react';
@@ -55,6 +56,7 @@ const Chart: React.FC = () => {
   const [indicators, setIndicators] = useState<Indicators | null>(null);
   const [showEMA, setShowEMA] = useState(true);
   const [showBB, setShowBB] = useState(true);
+  const [showRSI, setShowRSI] = useState(true);
 
   // Sync URL param to store
   useEffect(() => {
@@ -124,6 +126,41 @@ const Chart: React.FC = () => {
   useEffect(() => {
     getPairs().then(setPairs).catch(() => {});
   }, []);
+
+  // Compute RSI(14) from candle close prices
+  const rsiData = useMemo(() => {
+    if (candles.length < 15) return [];
+    const closes = candles.map((c) => c.close);
+    const period = 14;
+    const result: { time: number; value: number }[] = [];
+
+    // Calculate initial average gain/loss over first `period` changes
+    let avgGain = 0;
+    let avgLoss = 0;
+    for (let i = 1; i <= period; i++) {
+      const diff = closes[i] - closes[i - 1];
+      if (diff > 0) avgGain += diff;
+      else avgLoss += Math.abs(diff);
+    }
+    avgGain /= period;
+    avgLoss /= period;
+
+    const rsi0 = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+    result.push({ time: candles[period].time, value: rsi0 });
+
+    // Smoothed RSI for remaining bars
+    for (let i = period + 1; i < closes.length; i++) {
+      const diff = closes[i] - closes[i - 1];
+      const gain = diff > 0 ? diff : 0;
+      const loss = diff < 0 ? Math.abs(diff) : 0;
+      avgGain = (avgGain * (period - 1) + gain) / period;
+      avgLoss = (avgLoss * (period - 1) + loss) / period;
+      const rsi = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+      result.push({ time: candles[i].time, value: rsi });
+    }
+
+    return result;
+  }, [candles]);
 
   const ticker = tickers.get(currentSymbol);
   const priceColor = ticker && ticker.change24h >= 0 ? 'text-success' : 'text-danger';
@@ -221,6 +258,15 @@ const Chart: React.FC = () => {
             >
               BB
             </button>
+            <button
+              onClick={() => setShowRSI(!showRSI)}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                showRSI ? 'bg-amber-500/15 text-amber-400 border border-amber-500/25' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+              )}
+            >
+              RSI
+            </button>
           </div>
         </div>
       </div>
@@ -243,6 +289,13 @@ const Chart: React.FC = () => {
           />
         )}
       </div>
+
+      {/* RSI Sub-Chart */}
+      {showRSI && rsiData.length > 0 && (
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <RSIChart data={rsiData} height={100} />
+        </div>
+      )}
 
       {/* Indicators Panel */}
       {indicators && (

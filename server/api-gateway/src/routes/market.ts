@@ -305,6 +305,145 @@ router.get('/screener', async (req: Request, res: Response) => {
   }
 });
 
+// GET /fear-greed — Composite Fear & Greed index
+router.get('/fear-greed', async (_req: Request, res: Response) => {
+  try {
+    // 1. Get all active trading pairs
+    const pairsResult = await query(
+      `SELECT tp.id, tp.symbol, tp.base_asset, tp.quote_asset, e.name as exchange
+       FROM trading_pairs tp
+       JOIN exchanges e ON e.id = tp.exchange_id
+       WHERE tp.is_active = true`
+    );
+
+    // 2. Fetch tickers from Redis
+    const tickerKeys = await redis.keys('ticker:*:*');
+    const tickerMap: Record<string, { price: number; change24h: number; volume: number }> = {};
+
+    if (tickerKeys.length > 0) {
+      const pipeline = redis.pipeline();
+      for (const key of tickerKeys) {
+        pipeline.get(key);
+      }
+      const tickerResults = await pipeline.exec();
+      tickerKeys.forEach((key, i) => {
+        const value = tickerResults?.[i]?.[1];
+        if (typeof value === 'string') {
+          try {
+            const parsed = JSON.parse(value);
+            const parts = key.split(':');
+            const tickerExchange = parts[1];
+            const tickerSymbol = parts[2];
+            tickerMap[`${tickerExchange}:${tickerSymbol}`] = {
+              price: parsed.price ?? 0,
+              change24h: parsed.change24h ?? 0,
+              volume: parsed.volume ?? 0,
+            };
+          } catch { /* skip */ }
+        }
+      });
+    }
+
+    // 3. Compute RSI for each pair and collect metrics
+    const rsiValues: number[] = [];
+    const changes: number[] = [];
+    const volumes: number[] = [];
+
+    for (const pair of pairsResult.rows) {
+      const tickerKey = `${pair.exchange}:${pair.symbol.toUpperCase()}`;
+      const ticker = tickerMap[tickerKey];
+      if (!ticker) continue;
+
+      changes.push(ticker.change24h);
+      volumes.push(ticker.volume);
+
+      // Compute RSI(14) from last 15 1m candles
+      const candlesResult = await query(
+        `SELECT close FROM ohlcv_1m
+         WHERE pair_id = $1
+         ORDER BY time DESC
+         LIMIT 15`,
+        [pair.id]
+      );
+
+      const closes = candlesResult.rows.map((r) => parseFloat(r.close)).reverse();
+      if (closes.length >= 15) {
+        let gains = 0;
+        let losses = 0;
+        for (let i = 1; i <= 14; i++) {
+          const diff = closes[i] - closes[i - 1];
+          if (diff > 0) gains += diff;
+          else losses += Math.abs(diff);
+        }
+        const avgGain = gains / 14;
+        const avgLoss = losses / 14;
+        const rsi = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+        rsiValues.push(rsi);
+      }
+    }
+
+    // 4. Compute component scores
+
+    // RSI component (weight 30%): avg RSI mapped to 0-100 (RSI 30 = 0, RSI 70 = 100)
+    const rsiAvg = rsiValues.length > 0
+      ? rsiValues.reduce((a, b) => a + b, 0) / rsiValues.length
+      : 50;
+    const rsiScore = Math.max(0, Math.min(100, ((rsiAvg - 30) / 40) * 100));
+
+    // Price momentum (weight 30%): % of pairs with positive 24h change
+    const bullishCount = changes.filter((c) => c > 0).length;
+    const bullishPct = changes.length > 0 ? (bullishCount / changes.length) * 100 : 50;
+
+    // Volume trend (weight 20%): high volume during drops = fear
+    // Compare current avg volume to a baseline — if prices are dropping and volume is high, it's fear
+    const avgChange = changes.length > 0
+      ? changes.reduce((a, b) => a + b, 0) / changes.length
+      : 0;
+    // Volume score: if avg change is negative and volume is high, fear (low score)
+    // If avg change is positive and volume is high, greed (high score)
+    // Normalize: use bullishPct as proxy — high bullish % with volume = greed
+    const volumeScore = Math.max(0, Math.min(100, bullishPct + (avgChange > 0 ? 10 : -10)));
+
+    // Funding rate proxy (weight 20%): neutral placeholder
+    const fundingScore = 50;
+
+    // 5. Weighted composite score
+    const score = Math.round(
+      rsiScore * 0.3 +
+      bullishPct * 0.3 +
+      volumeScore * 0.2 +
+      fundingScore * 0.2
+    );
+    const clampedScore = Math.max(0, Math.min(100, score));
+
+    // 6. Label
+    let label: string;
+    if (clampedScore < 20) label = 'Extreme Fear';
+    else if (clampedScore < 40) label = 'Fear';
+    else if (clampedScore < 60) label = 'Neutral';
+    else if (clampedScore < 80) label = 'Greed';
+    else label = 'Extreme Greed';
+
+    res.json({
+      success: true,
+      data: {
+        score: clampedScore,
+        label,
+        components: {
+          rsi_avg: Math.round(rsiAvg * 100) / 100,
+          bullish_pct: Math.round(bullishPct * 100) / 100,
+          volume_score: Math.round(volumeScore * 100) / 100,
+          funding_score: fundingScore,
+        },
+        timestamp: Date.now(),
+      },
+    });
+  } catch (err) {
+    logger.error('Fear & Greed error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 // GET /ticker — all tickers
 router.get('/ticker', async (_req: Request, res: Response) => {
   try {

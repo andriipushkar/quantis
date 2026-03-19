@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { TrendingUp, TrendingDown, BarChart3, Activity } from 'lucide-react';
-import { getTickers, getOHLCV, type TickerData } from '@/services/api';
+import { TrendingUp, TrendingDown, BarChart3, Activity, Gauge } from 'lucide-react';
+import { getTickers, getOHLCV, getFearGreed, type TickerData, type FearGreedData } from '@/services/api';
 import { useMarketStore } from '@/stores/market';
 import { cn } from '@/utils/cn';
 
@@ -21,6 +21,144 @@ function formatChange(value: number): string {
 function stripQuote(symbol: string): string {
   return symbol.replace(/USDT$/, '');
 }
+
+// ---------------------------------------------------------------------------
+// Fear & Greed Gauge (canvas arc)
+// ---------------------------------------------------------------------------
+
+const FearGreedGauge: React.FC = () => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [data, setData] = useState<FearGreedData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchData() {
+      try {
+        const result = await getFearGreed();
+        if (!cancelled) {
+          setData(result);
+          setLoading(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setError('Failed to load');
+          setLoading(false);
+        }
+      }
+    }
+    fetchData();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!data || !canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.scale(dpr, dpr);
+
+    const w = rect.width;
+    const h = rect.height;
+    const centerX = w / 2;
+    const centerY = h * 0.75;
+    const radius = Math.min(w, h) * 0.45;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // Draw arc background segments: red -> yellow -> green
+    const startAngle = Math.PI;
+    const endAngle = 2 * Math.PI;
+
+    // Gradient arc: red (fear) to yellow (neutral) to green (greed)
+    const segments = [
+      { start: 0, end: 0.2, color: '#dc2626' },
+      { start: 0.2, end: 0.4, color: '#ea580c' },
+      { start: 0.4, end: 0.6, color: '#eab308' },
+      { start: 0.6, end: 0.8, color: '#65a30d' },
+      { start: 0.8, end: 1.0, color: '#16a34a' },
+    ];
+
+    const arcWidth = 12;
+    ctx.lineCap = 'round';
+
+    for (const seg of segments) {
+      const a1 = startAngle + seg.start * Math.PI;
+      const a2 = startAngle + seg.end * Math.PI;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, a1, a2);
+      ctx.strokeStyle = seg.color;
+      ctx.lineWidth = arcWidth;
+      ctx.stroke();
+    }
+
+    // Draw needle
+    const needleAngle = startAngle + (data.score / 100) * Math.PI;
+    const needleLen = radius - 20;
+    const nx = centerX + Math.cos(needleAngle) * needleLen;
+    const ny = centerY + Math.sin(needleAngle) * needleLen;
+
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.lineTo(nx, ny);
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--foreground')
+      ? 'hsl(' + getComputedStyle(document.documentElement).getPropertyValue('--foreground').trim() + ')'
+      : '#e5e5e5';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // Center dot
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 4, 0, 2 * Math.PI);
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.fill();
+  }, [data]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-40">
+        <span className="text-muted-foreground text-sm animate-pulse">Loading...</span>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="flex items-center justify-center h-40">
+        <span className="text-muted-foreground text-sm">{error || 'No data'}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center">
+      <div className="relative w-full h-36">
+        <canvas ref={canvasRef} className="w-full h-full" />
+        <div className="absolute inset-0 flex flex-col items-center justify-end pb-2 pointer-events-none">
+          <span className="text-3xl font-bold font-mono text-foreground">{data.score}</span>
+          <span className={cn(
+            'text-xs font-semibold mt-0.5',
+            data.score < 20 ? 'text-red-500' :
+            data.score < 40 ? 'text-orange-500' :
+            data.score < 60 ? 'text-yellow-500' :
+            data.score < 80 ? 'text-lime-500' :
+            'text-green-500'
+          )}>
+            {data.label}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // ---------------------------------------------------------------------------
 // BTC Mini Chart (canvas line chart)
@@ -252,7 +390,7 @@ const Dashboard: React.FC = () => {
       </section>
 
       {/* ── Card Grid ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-5">
         {/* Market Overview */}
         <div className="bg-card border border-border rounded-xl p-5">
           <div className="flex items-center gap-2 mb-4">
@@ -368,6 +506,17 @@ const Dashboard: React.FC = () => {
             </h3>
           </div>
           <BtcMiniChart />
+        </div>
+
+        {/* Fear & Greed Index */}
+        <div className="bg-card border border-border rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Gauge className="w-4 h-4 text-primary" />
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+              Fear &amp; Greed
+            </h3>
+          </div>
+          <FearGreedGauge />
         </div>
       </div>
     </div>

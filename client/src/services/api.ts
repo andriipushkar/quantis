@@ -205,6 +205,23 @@ export async function getScreener(params?: Record<string, string>): Promise<Scre
   return res.data;
 }
 
+export interface FearGreedData {
+  score: number;
+  label: string;
+  components: {
+    rsi_avg: number;
+    bullish_pct: number;
+    volume_score: number;
+    funding_score: number;
+  };
+  timestamp: number;
+}
+
+export async function getFearGreed(): Promise<FearGreedData> {
+  const res = await api.get<{ success: boolean; data: FearGreedData }>('/market/fear-greed');
+  return res.data;
+}
+
 export async function getOHLCV(symbol: string, timeframe: string = '1m', limit: number = 500): Promise<OHLCV[]> {
   const res = await api.get<{ success: boolean; data: OHLCV[] }>(
     `/market/ohlcv/${symbol}?timeframe=${timeframe}&limit=${limit}`

@@ -9,6 +9,7 @@ const Landing = lazy(() => import('@/pages/Landing'));
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
 const Chart = lazy(() => import('@/pages/Chart'));
 const Screener = lazy(() => import('@/pages/Screener'));
+const Heatmap = lazy(() => import('@/pages/Heatmap'));
 const Signals = lazy(() => import('@/pages/Signals'));
 const Alerts = lazy(() => import('@/pages/Alerts'));
 const Portfolio = lazy(() => import('@/pages/Portfolio'));
@@ -59,6 +60,7 @@ const App: React.FC = () => {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/chart/:symbol?" element={<Chart />} />
             <Route path="/screener" element={<Screener />} />
+            <Route path="/heatmap" element={<Heatmap />} />
             <Route path="/signals" element={<Signals />} />
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/portfolio" element={<Portfolio />} />
