@@ -16,8 +16,10 @@ const Portfolio = lazy(() => import('@/pages/Portfolio'));
 const Copilot = lazy(() => import('@/pages/Copilot'));
 const PaperTrading = lazy(() => import('@/pages/PaperTrading'));
 const Settings = lazy(() => import('@/pages/Settings'));
+const Academy = lazy(() => import('@/pages/Academy'));
 const Login = lazy(() => import('@/pages/Login'));
 const Register = lazy(() => import('@/pages/Register'));
+const NotFound = lazy(() => import('@/pages/NotFound'));
 
 const PageLoader: React.FC = () => (
   <div className="flex items-center justify-center h-[60vh]">
@@ -69,7 +71,11 @@ const App: React.FC = () => {
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/portfolio" element={<Portfolio />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/academy" element={<Academy />} />
           </Route>
+
+          {/* Catch-all 404 */}
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
       <ToastContainer />

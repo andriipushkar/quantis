@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -14,13 +14,47 @@ import {
   Settings as SettingsIcon,
   ChevronLeft,
   ChevronRight,
+  GraduationCap,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
+
+function useSignalCount(): number {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchCount = async () => {
+      try {
+        const res = await fetch('/api/v1/analysis/signals');
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled) {
+            setCount(Array.isArray(data) ? data.length : (data.count ?? 0));
+          }
+        }
+      } catch {
+        // silently ignore
+      }
+    };
+
+    fetchCount();
+    const interval = setInterval(fetchCount, 60_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  return count;
+}
 
 interface NavItem {
   icon: React.ElementType;
   labelKey: string;
   path: string;
+  badge?: boolean;
 }
 
 const navItems: NavItem[] = [
@@ -29,8 +63,9 @@ const navItems: NavItem[] = [
   { icon: Search, labelKey: 'nav.screener', path: '/screener' },
   { icon: Grid3X3, labelKey: 'nav.heatmap', path: '/heatmap' },
   { icon: Bot, labelKey: 'nav.copilot', path: '/copilot' },
-  { icon: Signal, labelKey: 'nav.signals', path: '/signals' },
+  { icon: Signal, labelKey: 'nav.signals', path: '/signals', badge: true },
   { icon: CircleDollarSign, labelKey: 'nav.paperTrading', path: '/paper-trading' },
+  { icon: GraduationCap, labelKey: 'nav.academy', path: '/academy' },
   { icon: Bell, labelKey: 'nav.alerts', path: '/alerts' },
   { icon: Wallet, labelKey: 'nav.portfolio', path: '/portfolio' },
   { icon: SettingsIcon, labelKey: 'nav.settings', path: '/settings' },
@@ -43,6 +78,7 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
   const { t } = useTranslation();
+  const signalCount = useSignalCount();
 
   return (
     <aside
@@ -82,7 +118,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
               )
             }
           >
-            <item.icon className="w-5 h-5 flex-shrink-0" />
+            <span className="relative flex-shrink-0">
+              <item.icon className="w-5 h-5" />
+              {item.badge && signalCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none px-1">
+                  {signalCount > 99 ? '99+' : signalCount}
+                </span>
+              )}
+            </span>
             {!collapsed && <span className="truncate">{t(item.labelKey)}</span>}
           </NavLink>
         ))}

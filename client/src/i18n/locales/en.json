@@ -9,7 +9,8 @@
     "paperTrading": "Paper Trading",
     "alerts": "Alerts",
     "portfolio": "Portfolio",
-    "settings": "Settings"
+    "settings": "Settings",
+    "academy": "Academy"
   },
   "auth": {
     "login": "Log In",

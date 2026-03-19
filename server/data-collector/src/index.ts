@@ -7,12 +7,14 @@ import pool from './config/database.js';
 import redis from './config/redis.js';
 import { BinanceCollector } from './collectors/binance.js';
 import { BybitCollector } from './collectors/bybit.js';
+import { OkxCollector } from './collectors/okx.js';
 
 const PORT = parseInt(process.env.PORT || '3002', 10);
 
 const app = express();
 const binanceCollector = new BinanceCollector(pool, redis);
 const bybitCollector = new BybitCollector(pool, redis);
+const okxCollector = new OkxCollector(pool, redis);
 
 // Health check endpoint
 app.get('/health', async (_req, res) => {
@@ -58,8 +60,9 @@ async function start(): Promise<void> {
     await Promise.all([
       binanceCollector.start(),
       bybitCollector.start(),
+      okxCollector.start(),
     ]);
-    logger.info('Data collector service started successfully (Binance + Bybit)');
+    logger.info('Data collector service started successfully (Binance + Bybit + OKX)');
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error('Failed to start data collector service', { error: message });
@@ -74,6 +77,7 @@ async function shutdown(signal: string): Promise<void> {
     await Promise.all([
       binanceCollector.stop(),
       bybitCollector.stop(),
+      okxCollector.stop(),
     ]);
     logger.info('All collectors stopped');
 
