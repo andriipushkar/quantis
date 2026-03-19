@@ -1,0 +1,116 @@
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: quantis-postgres
+    environment:
+      POSTGRES_DB: quantis
+      POSTGRES_USER: quantis
+      POSTGRES_PASSWORD: quantis_dev_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./database/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quantis"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: quantis-redis
+    ports:
+      - "6381:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: server/api-gateway/Dockerfile
+    container_name: quantis-api
+    ports:
+      - "3001:3001"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./server/api-gateway/src:/app/server/api-gateway/src
+      - ./shared:/app/shared
+
+  data-collector:
+    build:
+      context: .
+      dockerfile: server/data-collector/Dockerfile
+    container_name: quantis-collector
+    ports:
+      - "3002:3002"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./server/data-collector/src:/app/server/data-collector/src
+      - ./shared:/app/shared
+
+  analysis-engine:
+    build:
+      context: .
+      dockerfile: server/analysis-engine/Dockerfile
+    container_name: quantis-analysis
+    ports:
+      - "3003:3003"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./server/analysis-engine/src:/app/server/analysis-engine/src
+      - ./shared:/app/shared
+
+  alert-service:
+    build:
+      context: .
+      dockerfile: server/alert-service/Dockerfile
+    container_name: quantis-alerts
+    ports:
+      - "3004:3004"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./server/alert-service/src:/app/server/alert-service/src
+      - ./shared:/app/shared
+
+  client:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    container_name: quantis-client
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api-gateway
+    volumes:
+      - ./client/src:/app/client/src
+      - ./shared:/app/shared
+
+volumes:
+  postgres-data:
+  redis-data:

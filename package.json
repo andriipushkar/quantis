@@ -1,0 +1,37 @@
+{
+  "name": "quantis",
+  "version": "0.1.0",
+  "private": true,
+  "description": "All-in-One Crypto Technical Analysis Platform",
+  "workspaces": [
+    "client",
+    "server/*",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "docker compose up -d postgres redis && concurrently \"npm run dev:api\" \"npm run dev:collector\" \"npm run dev:analysis\" \"npm run dev:alerts\" \"npm run dev:client\"",
+    "dev:client": "npm -w client run dev",
+    "dev:api": "npm -w server/api-gateway run dev",
+    "dev:collector": "npm -w server/data-collector run dev",
+    "dev:analysis": "npm -w server/analysis-engine run dev",
+    "dev:alerts": "npm -w server/alert-service run dev",
+    "build": "npm -w shared run build && npm -w client run build && npm -w server/api-gateway run build && npm -w server/data-collector run build && npm -w server/analysis-engine run build && npm -w server/alert-service run build",
+    "lint": "eslint . --ext .ts,.tsx",
+    "format": "prettier --write \"**/*.{ts,tsx,json,css}\"",
+    "db:migrate": "node database/migrate.js",
+    "db:seed": "node database/seed.js",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:build": "docker compose build",
+    "test": "npm -w server/api-gateway run test && npm -w server/analysis-engine run test"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "eslint": "^9.22.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
