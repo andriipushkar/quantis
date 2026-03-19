@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   LayoutDashboard,
@@ -17,6 +17,7 @@ import {
   GraduationCap,
   Newspaper,
   Anchor,
+  Zap,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -134,6 +135,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
           </NavLink>
         ))}
       </nav>
+
+      {/* Upgrade button */}
+      <Link
+        to="/pricing"
+        className={cn(
+          'flex items-center gap-2 mx-2 mb-1 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 hover:bg-primary/10',
+          collapsed && 'justify-center px-0'
+        )}
+      >
+        <Zap className="w-4 h-4 flex-shrink-0 text-primary" style={{ filter: 'drop-shadow(0 0 3px hsl(var(--primary) / 0.5))' }} />
+        {!collapsed && (
+          <span className="bg-gold-gradient bg-clip-text text-transparent">
+            Upgrade
+          </span>
+        )}
+      </Link>
 
       {/* Collapse toggle */}
       <button

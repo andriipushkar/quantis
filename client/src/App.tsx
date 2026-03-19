@@ -21,6 +21,8 @@ const News = lazy(() => import('@/pages/News'));
 const WhaleAlert = lazy(() => import('@/pages/WhaleAlert'));
 const Login = lazy(() => import('@/pages/Login'));
 const Register = lazy(() => import('@/pages/Register'));
+const Pricing = lazy(() => import('@/pages/Pricing'));
+const Referral = lazy(() => import('@/pages/Referral'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
 const PageLoader: React.FC = () => (
@@ -57,9 +59,10 @@ const App: React.FC = () => {
           {/* Public landing for guests; authenticated users redirect to dashboard */}
           <Route path="/" element={<HomeGate />} />
 
-          {/* Auth routes (no layout) */}
+          {/* Public routes (no layout) */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/pricing" element={<Pricing />} />
 
           {/* App routes wrapped in Layout */}
           <Route element={<Layout />}>
@@ -76,6 +79,7 @@ const App: React.FC = () => {
             <Route path="/academy" element={<Academy />} />
             <Route path="/news" element={<News />} />
             <Route path="/whale-alert" element={<WhaleAlert />} />
+            <Route path="/referral" element={<Referral />} />
           </Route>
 
           {/* Catch-all 404 */}
