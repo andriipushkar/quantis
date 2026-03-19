@@ -10,7 +10,9 @@
     "alerts": "Alerts",
     "portfolio": "Portfolio",
     "settings": "Settings",
-    "academy": "Academy"
+    "academy": "Academy",
+    "news": "News",
+    "whaleAlert": "Whale Alert"
   },
   "auth": {
     "login": "Log In",

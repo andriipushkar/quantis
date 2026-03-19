@@ -15,6 +15,8 @@ import {
   ChevronLeft,
   ChevronRight,
   GraduationCap,
+  Newspaper,
+  Anchor,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -65,6 +67,8 @@ const navItems: NavItem[] = [
   { icon: Bot, labelKey: 'nav.copilot', path: '/copilot' },
   { icon: Signal, labelKey: 'nav.signals', path: '/signals', badge: true },
   { icon: CircleDollarSign, labelKey: 'nav.paperTrading', path: '/paper-trading' },
+  { icon: Newspaper, labelKey: 'nav.news', path: '/news' },
+  { icon: Anchor, labelKey: 'nav.whaleAlert', path: '/whale-alert' },
   { icon: GraduationCap, labelKey: 'nav.academy', path: '/academy' },
   { icon: Bell, labelKey: 'nav.alerts', path: '/alerts' },
   { icon: Wallet, labelKey: 'nav.portfolio', path: '/portfolio' },

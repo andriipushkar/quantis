@@ -17,6 +17,8 @@ const Copilot = lazy(() => import('@/pages/Copilot'));
 const PaperTrading = lazy(() => import('@/pages/PaperTrading'));
 const Settings = lazy(() => import('@/pages/Settings'));
 const Academy = lazy(() => import('@/pages/Academy'));
+const News = lazy(() => import('@/pages/News'));
+const WhaleAlert = lazy(() => import('@/pages/WhaleAlert'));
 const Login = lazy(() => import('@/pages/Login'));
 const Register = lazy(() => import('@/pages/Register'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
@@ -72,6 +74,8 @@ const App: React.FC = () => {
             <Route path="/portfolio" element={<Portfolio />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/academy" element={<Academy />} />
+            <Route path="/news" element={<News />} />
+            <Route path="/whale-alert" element={<WhaleAlert />} />
           </Route>
 
           {/* Catch-all 404 */}
