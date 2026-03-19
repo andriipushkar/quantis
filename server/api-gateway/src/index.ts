@@ -15,6 +15,8 @@ import analysisRoutes from './routes/analysis.js';
 import alertRoutes from './routes/alerts.js';
 import watchlistRoutes from './routes/watchlist.js';
 import subscriptionRoutes from './routes/subscription.js';
+import copilotRoutes from './routes/copilot.js';
+import paperTradingRoutes from './routes/paper-trading.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import Redis from 'ioredis';
 
@@ -46,6 +48,8 @@ app.use('/api/v1/analysis', analysisRoutes);
 app.use('/api/v1/alerts', alertRoutes);
 app.use('/api/v1/watchlist', watchlistRoutes);
 app.use('/api/v1/subscription', subscriptionRoutes);
+app.use('/api/v1/copilot', copilotRoutes);
+app.use('/api/v1/paper', paperTradingRoutes);
 
 // Health check
 app.get('/health', (_req, res) => {

@@ -4,7 +4,9 @@
     "chart": "Chart",
     "screener": "Screener",
     "heatmap": "Heatmap",
+    "copilot": "AI Copilot",
     "signals": "Signals",
+    "paperTrading": "Paper Trading",
     "alerts": "Alerts",
     "portfolio": "Portfolio",
     "settings": "Settings"

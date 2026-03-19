@@ -13,6 +13,8 @@ const Heatmap = lazy(() => import('@/pages/Heatmap'));
 const Signals = lazy(() => import('@/pages/Signals'));
 const Alerts = lazy(() => import('@/pages/Alerts'));
 const Portfolio = lazy(() => import('@/pages/Portfolio'));
+const Copilot = lazy(() => import('@/pages/Copilot'));
+const PaperTrading = lazy(() => import('@/pages/PaperTrading'));
 const Settings = lazy(() => import('@/pages/Settings'));
 const Login = lazy(() => import('@/pages/Login'));
 const Register = lazy(() => import('@/pages/Register'));
@@ -61,7 +63,9 @@ const App: React.FC = () => {
             <Route path="/chart/:symbol?" element={<Chart />} />
             <Route path="/screener" element={<Screener />} />
             <Route path="/heatmap" element={<Heatmap />} />
+            <Route path="/copilot" element={<Copilot />} />
             <Route path="/signals" element={<Signals />} />
+            <Route path="/paper-trading" element={<PaperTrading />} />
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/portfolio" element={<Portfolio />} />
             <Route path="/settings" element={<Settings />} />

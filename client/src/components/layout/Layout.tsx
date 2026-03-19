@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   LineChart,
   Search,
+  Bot,
   Signal,
   Bell,
 } from 'lucide-react';
@@ -16,6 +17,7 @@ const mobileNavItems = [
   { icon: LayoutDashboard, labelKey: 'nav.dashboard', path: '/dashboard' },
   { icon: LineChart, labelKey: 'nav.chart', path: '/chart' },
   { icon: Search, labelKey: 'nav.screener', path: '/screener' },
+  { icon: Bot, labelKey: 'nav.copilot', path: '/copilot' },
   { icon: Signal, labelKey: 'nav.signals', path: '/signals' },
   { icon: Bell, labelKey: 'nav.alerts', path: '/alerts' },
 ];
