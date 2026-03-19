@@ -51,7 +51,7 @@ export function normalizeBybitKline(raw: Record<string, unknown>): NormalizedKli
     low: parseFloat(String(raw.low ?? '0')),
     close: parseFloat(String(raw.close ?? '0')),
     volume: parseFloat(String(raw.volume ?? '0')),
-    trades: Number(raw.turnover ?? 0),
+    trades: 0, // Bybit doesn't provide trade count in kline data
   };
 }
 

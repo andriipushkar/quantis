@@ -6,11 +6,13 @@ import logger from './config/logger.js';
 import pool from './config/database.js';
 import redis from './config/redis.js';
 import { BinanceCollector } from './collectors/binance.js';
+import { BybitCollector } from './collectors/bybit.js';
 
 const PORT = parseInt(process.env.PORT || '3002', 10);
 
 const app = express();
 const binanceCollector = new BinanceCollector(pool, redis);
+const bybitCollector = new BybitCollector(pool, redis);
 
 // Health check endpoint
 app.get('/health', async (_req, res) => {
@@ -52,9 +54,12 @@ async function start(): Promise<void> {
       logger.info(`Data collector health server listening on port ${PORT}`);
     });
 
-    // Start the Binance collector
-    await binanceCollector.start();
-    logger.info('Data collector service started successfully');
+    // Start collectors in parallel
+    await Promise.all([
+      binanceCollector.start(),
+      bybitCollector.start(),
+    ]);
+    logger.info('Data collector service started successfully (Binance + Bybit)');
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error('Failed to start data collector service', { error: message });
@@ -66,8 +71,11 @@ async function shutdown(signal: string): Promise<void> {
   logger.info(`Received ${signal}, shutting down gracefully`);
 
   try {
-    await binanceCollector.stop();
-    logger.info('Binance collector stopped');
+    await Promise.all([
+      binanceCollector.stop(),
+      bybitCollector.stop(),
+    ]);
+    logger.info('All collectors stopped');
 
     await redis.quit();
     logger.info('Redis connection closed');

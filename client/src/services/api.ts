@@ -90,6 +90,16 @@ export interface TickerData {
   timestamp: number;
 }
 
+export interface ScreenerItem {
+  symbol: string;
+  exchange: string;
+  price: number;
+  change24h: number;
+  volume: number;
+  rsi: number;
+  trend: 'bullish' | 'bearish' | 'neutral';
+}
+
 export interface OHLCV {
   time: number;
   open: number;
@@ -186,6 +196,12 @@ export async function getTickers(): Promise<Record<string, TickerData>> {
 
 export async function getTicker(symbol: string): Promise<TickerData> {
   const res = await api.get<{ success: boolean; data: TickerData }>(`/market/ticker/${symbol}`);
+  return res.data;
+}
+
+export async function getScreener(params?: Record<string, string>): Promise<ScreenerItem[]> {
+  const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+  const res = await api.get<{ success: boolean; data: ScreenerItem[] }>(`/market/screener${qs}`);
   return res.data;
 }
 
