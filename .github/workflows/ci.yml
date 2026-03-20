@@ -30,6 +30,8 @@ jobs:
           cache: npm
       - run: npm install
       - name: Analysis engine unit tests
-        run: npx -w server/analysis-engine jest --passWithNoTests
-      - name: API gateway tests (skip — requires running server)
-        run: echo "Integration tests configured — run manually with npm test -w server/api-gateway"
+        run: npm -w server/analysis-engine run test
+      - name: Client utility tests
+        run: npm -w client run test
+      - name: API gateway integration tests (skip — requires running server)
+        run: echo "Integration tests configured — run manually with npm test:integration"
