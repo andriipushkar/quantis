@@ -402,4 +402,89 @@ export async function getOpenInterest(): Promise<OpenInterestData[]> {
   return res.data;
 }
 
+// --- Admin ---
+
+export interface AdminDashboard {
+  totalUsers: number;
+  usersToday: number;
+  totalSignals: number;
+  activePairs: number;
+  totalCandles: number;
+  revenue: number;
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  tier: string;
+  created_at: string;
+  display_name: string | null;
+}
+
+export interface SystemHealth {
+  dbStatus: string;
+  redisStatus: string;
+  candlesByExchange: Array<{ exchange: string; count: string }>;
+  latestSignalTime: string | null;
+}
+
+export async function getAdminDashboard(): Promise<AdminDashboard> {
+  const res = await api.get<{ success: boolean; data: AdminDashboard }>('/admin/dashboard');
+  return res.data;
+}
+
+export async function getAdminUsers(): Promise<AdminUser[]> {
+  const res = await api.get<{ success: boolean; data: AdminUser[] }>('/admin/users');
+  return res.data;
+}
+
+export async function updateUserTier(userId: string, tier: string): Promise<void> {
+  await api.put(`/admin/users/${userId}/tier`, { tier });
+}
+
+export async function getSystemHealth(): Promise<SystemHealth> {
+  const res = await api.get<{ success: boolean; data: SystemHealth }>('/admin/system');
+  return res.data;
+}
+
+// --- 2FA ---
+
+export interface TwoFactorSetup {
+  secret: string;
+  qrCodeUrl: string;
+}
+
+export async function setup2FA(): Promise<TwoFactorSetup> {
+  const res = await api.post<{ success: boolean; data: TwoFactorSetup }>('/auth/2fa/setup');
+  return res.data;
+}
+
+export async function verify2FA(code: string): Promise<void> {
+  await api.post('/auth/2fa/verify', { code });
+}
+
+// --- Telegram ---
+
+export interface TelegramStatus {
+  connected: boolean;
+  chatId: string | null;
+}
+
+export async function connectTelegram(chatId: string): Promise<void> {
+  await api.post('/telegram/connect', { chatId });
+}
+
+export async function disconnectTelegram(): Promise<void> {
+  await api.post('/telegram/disconnect');
+}
+
+export async function getTelegramStatus(): Promise<TelegramStatus> {
+  const res = await api.get<{ success: boolean; data: TelegramStatus }>('/telegram/status');
+  return res.data;
+}
+
+export async function sendTelegramTest(): Promise<void> {
+  await api.post('/telegram/test');
+}
+
 export { setToken, clearToken, getToken };

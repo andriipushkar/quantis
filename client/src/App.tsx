@@ -40,6 +40,7 @@ const ChartReplay = lazy(() => import('@/pages/ChartReplay'));
 const CopyTrading = lazy(() => import('@/pages/CopyTrading'));
 const SocialFeed = lazy(() => import('@/pages/SocialFeed'));
 const Confluence = lazy(() => import('@/pages/Confluence'));
+const Admin = lazy(() => import('@/pages/Admin'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
 const PageLoader: React.FC = () => (
@@ -114,6 +115,7 @@ const App: React.FC = () => {
             <Route path="/copy-trading" element={<CopyTrading />} />
             <Route path="/social" element={<SocialFeed />} />
             <Route path="/confluence" element={<Confluence />} />
+            <Route path="/admin" element={<Admin />} />
           </Route>
 
           {/* Catch-all 404 */}

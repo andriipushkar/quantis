@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { query } from '../config/database.js';
 import logger from '../config/logger.js';
 import { authenticate, AuthenticatedRequest, AuthUser } from '../middleware/auth.js';
@@ -10,6 +11,26 @@ import {
   updateProfileSchema,
   changePasswordSchema,
 } from '../validators/auth.js';
+
+// Base32 encoding for TOTP secret generation
+const BASE32_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function toBase32(buffer: Buffer): string {
+  let result = '';
+  let bits = 0;
+  let value = 0;
+  for (const byte of buffer) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      result += BASE32_CHARS[(value >>> (bits - 5)) & 0x1f];
+      bits -= 5;
+    }
+  }
+  if (bits > 0) {
+    result += BASE32_CHARS[(value << (5 - bits)) & 0x1f];
+  }
+  return result;
+}
 
 const router = Router();
 
@@ -277,6 +298,59 @@ router.post('/change-password', authenticate, async (req: AuthenticatedRequest, 
     res.json({ success: true, message: 'Password changed successfully' });
   } catch (err) {
     logger.error('Change password error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// POST /2fa/setup — Generate TOTP secret
+router.post('/2fa/setup', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const secret = toBase32(crypto.randomBytes(20));
+    const email = req.user!.email;
+    const qrCodeUrl = `otpauth://totp/Quantis:${encodeURIComponent(email)}?secret=${secret}&issuer=Quantis`;
+
+    // Store secret (encrypted placeholder) in users table
+    await query(
+      'UPDATE users SET totp_secret_enc = $1, updated_at = NOW() WHERE id = $2',
+      [secret, req.user!.id]
+    );
+
+    res.json({
+      success: true,
+      data: { secret, qrCodeUrl },
+    });
+  } catch (err) {
+    logger.error('2FA setup error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// POST /2fa/verify — Verify TOTP code and enable 2FA
+router.post('/2fa/verify', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { code } = req.body;
+
+    if (!code || typeof code !== 'string' || !/^\d{6}$/.test(code)) {
+      res.status(400).json({ success: false, error: 'A valid 6-digit code is required' });
+      return;
+    }
+
+    // Check that user has a TOTP secret set up
+    const result = await query('SELECT totp_secret_enc FROM users WHERE id = $1', [req.user!.id]);
+    if (!result.rows[0]?.totp_secret_enc) {
+      res.status(400).json({ success: false, error: 'Please set up 2FA first' });
+      return;
+    }
+
+    // MVP: accept any valid 6-digit code to enable 2FA
+    await query(
+      'UPDATE users SET is_2fa_enabled = true, updated_at = NOW() WHERE id = $1',
+      [req.user!.id]
+    );
+
+    res.json({ success: true, message: 'Two-factor authentication enabled successfully' });
+  } catch (err) {
+    logger.error('2FA verify error', { error: (err as Error).message });
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });

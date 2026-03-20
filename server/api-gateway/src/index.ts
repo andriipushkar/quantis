@@ -28,6 +28,8 @@ import exchangeHealthRoutes from './routes/exchange-health.js';
 import gamificationRoutes from './routes/gamification.js';
 import copyTradingRoutes from './routes/copy-trading.js';
 import socialRoutes from './routes/social.js';
+import adminRoutes from './routes/admin.js';
+import telegramRoutes from './routes/telegram.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import Redis from 'ioredis';
 
@@ -72,6 +74,8 @@ app.use('/api/v1/exchanges', exchangeHealthRoutes);
 app.use('/api/v1/gamification', gamificationRoutes);
 app.use('/api/v1/copy', copyTradingRoutes);
 app.use('/api/v1/social', socialRoutes);
+app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/telegram', telegramRoutes);
 
 // Health check
 app.get('/health', (_req, res) => {

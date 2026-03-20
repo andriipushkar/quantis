@@ -2,7 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth';
 import { useThemeStore } from '@/stores/theme';
-import { updateProfile } from '@/services/api';
+import {
+  updateProfile,
+  setup2FA,
+  verify2FA,
+  connectTelegram,
+  disconnectTelegram,
+  getTelegramStatus,
+  sendTelegramTest,
+} from '@/services/api';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/common/Card';
@@ -16,6 +24,10 @@ import {
   Sun,
   Moon,
   LogOut,
+  Smartphone,
+  MessageCircle,
+  Check,
+  Copy,
 } from 'lucide-react';
 
 const TIMEZONES = [
@@ -50,6 +62,20 @@ const Settings: React.FC = () => {
   const [language, setLanguage] = useState(user?.language || 'en');
   const [saving, setSaving] = useState(false);
 
+  // 2FA state
+  const [is2FAEnabled, setIs2FAEnabled] = useState(false);
+  const [totpSecret, setTotpSecret] = useState('');
+  const [totpQrUrl, setTotpQrUrl] = useState('');
+  const [totpCode, setTotpCode] = useState('');
+  const [setting2FA, setSetting2FA] = useState(false);
+  const [verifying2FA, setVerifying2FA] = useState(false);
+
+  // Telegram state
+  const [telegramConnected, setTelegramConnected] = useState(false);
+  const [telegramChatId, setTelegramChatId] = useState('');
+  const [telegramInput, setTelegramInput] = useState('');
+  const [telegramLoading, setTelegramLoading] = useState(false);
+
   useEffect(() => {
     if (user) {
       setDisplayName(user.display_name || '');
@@ -57,6 +83,15 @@ const Settings: React.FC = () => {
       setLanguage(user.language || 'en');
     }
   }, [user]);
+
+  useEffect(() => {
+    getTelegramStatus()
+      .then((status) => {
+        setTelegramConnected(status.connected);
+        setTelegramChatId(status.chatId || '');
+      })
+      .catch(() => {});
+  }, []);
 
   const handleSave = async () => {
     setSaving(true);
@@ -228,6 +263,202 @@ const Settings: React.FC = () => {
             <LogOut className="w-4 h-4 mr-2" />
             Log Out
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Two-Factor Authentication */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Smartphone className="w-4 h-4" />
+            Two-Factor Authentication
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-2">
+            <div
+              className={`w-2.5 h-2.5 rounded-full ${
+                is2FAEnabled ? 'bg-success' : 'bg-muted-foreground'
+              }`}
+            />
+            <span className="text-sm text-foreground">
+              {is2FAEnabled ? 'Enabled' : 'Disabled'}
+            </span>
+          </div>
+
+          {!is2FAEnabled && !totpSecret && (
+            <Button
+              variant="outline"
+              isLoading={setting2FA}
+              onClick={async () => {
+                setSetting2FA(true);
+                try {
+                  const data = await setup2FA();
+                  setTotpSecret(data.secret);
+                  setTotpQrUrl(data.qrCodeUrl);
+                  addToast('Scan the QR code with your authenticator app.', 'success');
+                } catch {
+                  addToast('Failed to set up 2FA.', 'danger');
+                } finally {
+                  setSetting2FA(false);
+                }
+              }}
+            >
+              Enable 2FA
+            </Button>
+          )}
+
+          {totpSecret && !is2FAEnabled && (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-border bg-secondary/50 p-4 space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Scan this URL with your authenticator app, or enter the secret manually:
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="text-xs text-primary bg-primary/10 px-2 py-1 rounded break-all flex-1">
+                    {totpSecret}
+                  </code>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(totpSecret);
+                      addToast('Secret copied to clipboard.', 'success');
+                    }}
+                    className="p-1.5 rounded hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground break-all">{totpQrUrl}</p>
+              </div>
+
+              <div className="flex gap-2">
+                <Input
+                  placeholder="6-digit code"
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  className="max-w-[160px]"
+                />
+                <Button
+                  variant="outline"
+                  isLoading={verifying2FA}
+                  disabled={totpCode.length !== 6}
+                  onClick={async () => {
+                    setVerifying2FA(true);
+                    try {
+                      await verify2FA(totpCode);
+                      setIs2FAEnabled(true);
+                      setTotpSecret('');
+                      setTotpQrUrl('');
+                      setTotpCode('');
+                      addToast('2FA enabled successfully.', 'success');
+                    } catch {
+                      addToast('Failed to verify code.', 'danger');
+                    } finally {
+                      setVerifying2FA(false);
+                    }
+                  }}
+                >
+                  <Check className="w-4 h-4 mr-1" />
+                  Verify
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Telegram */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MessageCircle className="w-4 h-4" />
+            Telegram
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-2">
+            <div
+              className={`w-2.5 h-2.5 rounded-full ${
+                telegramConnected ? 'bg-success' : 'bg-muted-foreground'
+              }`}
+            />
+            <span className="text-sm text-foreground">
+              {telegramConnected ? `Connected (${telegramChatId})` : 'Not connected'}
+            </span>
+          </div>
+
+          {!telegramConnected ? (
+            <div className="flex gap-2">
+              <Input
+                placeholder="Telegram Chat ID"
+                value={telegramInput}
+                onChange={(e) => setTelegramInput(e.target.value)}
+                className="max-w-[240px]"
+              />
+              <Button
+                variant="outline"
+                isLoading={telegramLoading}
+                disabled={!telegramInput.trim()}
+                onClick={async () => {
+                  setTelegramLoading(true);
+                  try {
+                    await connectTelegram(telegramInput.trim());
+                    setTelegramConnected(true);
+                    setTelegramChatId(telegramInput.trim());
+                    setTelegramInput('');
+                    addToast('Telegram connected successfully.', 'success');
+                  } catch {
+                    addToast('Failed to connect Telegram.', 'danger');
+                  } finally {
+                    setTelegramLoading(false);
+                  }
+                }}
+              >
+                Connect
+              </Button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    await sendTelegramTest();
+                    addToast('Test message sent.', 'success');
+                  } catch {
+                    addToast('Failed to send test message.', 'danger');
+                  }
+                }}
+              >
+                Send Test
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                isLoading={telegramLoading}
+                onClick={async () => {
+                  setTelegramLoading(true);
+                  try {
+                    await disconnectTelegram();
+                    setTelegramConnected(false);
+                    setTelegramChatId('');
+                    addToast('Telegram disconnected.', 'success');
+                  } catch {
+                    addToast('Failed to disconnect.', 'danger');
+                  } finally {
+                    setTelegramLoading(false);
+                  }
+                }}
+              >
+                Disconnect
+              </Button>
+            </div>
+          )}
+
+          <p className="text-xs text-muted-foreground">
+            Connect your Telegram account to receive signal alerts and notifications directly in your chat.
+          </p>
         </CardContent>
       </Card>
 
