@@ -37,6 +37,9 @@ const MarketBreadth = lazy(() => import('@/pages/MarketBreadth'));
 const OpenInterest = lazy(() => import('@/pages/OpenInterest'));
 const Profile = lazy(() => import('@/pages/Profile'));
 const ChartReplay = lazy(() => import('@/pages/ChartReplay'));
+const CopyTrading = lazy(() => import('@/pages/CopyTrading'));
+const SocialFeed = lazy(() => import('@/pages/SocialFeed'));
+const Confluence = lazy(() => import('@/pages/Confluence'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
 const PageLoader: React.FC = () => (
@@ -108,6 +111,9 @@ const App: React.FC = () => {
             <Route path="/open-interest" element={<OpenInterest />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/chart-replay" element={<ChartReplay />} />
+            <Route path="/copy-trading" element={<CopyTrading />} />
+            <Route path="/social" element={<SocialFeed />} />
+            <Route path="/confluence" element={<Confluence />} />
           </Route>
 
           {/* Catch-all 404 */}

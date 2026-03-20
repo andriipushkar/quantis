@@ -26,7 +26,10 @@
     "marketBreadth": "Market Breadth",
     "openInterest": "Open Interest",
     "profile": "Profile",
-    "chartReplay": "Chart Replay"
+    "chartReplay": "Chart Replay",
+    "copyTrading": "Copy Trading",
+    "social": "Social Feed",
+    "confluence": "Confluence Map"
   },
   "auth": {
     "login": "Log In",

@@ -31,7 +31,10 @@ import {
   Activity,
   BarChart3,
   User,
+  Users,
   Rewind,
+  MessageSquare,
+  Crosshair,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -99,6 +102,9 @@ const navItems: NavItem[] = [
   { icon: Bell, labelKey: 'nav.alerts', path: '/alerts' },
   { icon: BookOpen, labelKey: 'nav.journal', path: '/journal' },
   { icon: Wallet, labelKey: 'nav.portfolio', path: '/portfolio' },
+  { icon: Users, labelKey: 'nav.copyTrading', path: '/copy-trading' },
+  { icon: MessageSquare, labelKey: 'nav.social', path: '/social' },
+  { icon: Crosshair, labelKey: 'nav.confluence', path: '/confluence' },
   { icon: User, labelKey: 'nav.profile', path: '/profile' },
   { icon: Rewind, labelKey: 'nav.chartReplay', path: '/chart-replay' },
   { icon: SettingsIcon, labelKey: 'nav.settings', path: '/settings' },

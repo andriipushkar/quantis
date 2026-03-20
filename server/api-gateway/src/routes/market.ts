@@ -1478,4 +1478,211 @@ router.get('/open-interest', async (_req: Request, res: Response) => {
   }
 });
 
+// GET /confluence/:symbol — Cross-signal confluence map
+router.get('/confluence/:symbol', async (req: Request, res: Response) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+
+    // Check cache (5 min)
+    const cacheKey = `market:confluence:${symbol}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+
+    // Find pair
+    const pairResult = await query(
+      `SELECT tp.id FROM trading_pairs tp
+       JOIN exchanges e ON e.id = tp.exchange_id
+       WHERE tp.symbol = $1 AND tp.is_active = true
+       LIMIT 1`,
+      [symbol]
+    );
+
+    if (pairResult.rows.length === 0) {
+      res.status(404).json({ success: false, error: `No data found for ${symbol}` });
+      return;
+    }
+
+    const pairId = pairResult.rows[0].id;
+
+    // Fetch last 100 1h candles for indicator computation
+    const candlesResult = await query(
+      `SELECT o.time, o.open, o.high, o.low, o.close, o.volume
+       FROM ohlcv_1h o
+       WHERE o.pair_id = $1
+       ORDER BY o.time DESC
+       LIMIT 100`,
+      [pairId]
+    );
+
+    const candles = candlesResult.rows
+      .map((r: { time: string; open: string; high: string; low: string; close: string; volume: string }) => ({
+        time: new Date(r.time),
+        open: parseFloat(r.open),
+        high: parseFloat(r.high),
+        low: parseFloat(r.low),
+        close: parseFloat(r.close),
+        volume: parseFloat(r.volume),
+      }))
+      .reverse();
+
+    if (candles.length < 20) {
+      res.status(404).json({ success: false, error: 'Insufficient data for confluence analysis' });
+      return;
+    }
+
+    const closes = candles.map((c) => c.close);
+    const highs = candles.map((c) => c.high);
+    const lows = candles.map((c) => c.low);
+    const currentPrice = closes[closes.length - 1];
+
+    // --- Collect price zones with sources ---
+    const zoneSources: Map<number, Set<string>> = new Map();
+
+    function addZone(price: number, source: string) {
+      // Round to significant price level (0.1% granularity)
+      const precision = currentPrice > 1000 ? 1 : currentPrice > 100 ? 0.1 : currentPrice > 1 ? 0.01 : 0.0001;
+      const rounded = Math.round(price / precision) * precision;
+      const roundedKey = parseFloat(rounded.toPrecision(8));
+      if (!zoneSources.has(roundedKey)) {
+        zoneSources.set(roundedKey, new Set());
+      }
+      zoneSources.get(roundedKey)!.add(source);
+    }
+
+    // 1. Support/Resistance from recent swing highs/lows (last 50 candles)
+    const recentCandles = candles.slice(-50);
+    for (let i = 2; i < recentCandles.length - 2; i++) {
+      // Swing high: higher than 2 candles on each side
+      if (
+        recentCandles[i].high > recentCandles[i - 1].high &&
+        recentCandles[i].high > recentCandles[i - 2].high &&
+        recentCandles[i].high > recentCandles[i + 1].high &&
+        recentCandles[i].high > recentCandles[i + 2].high
+      ) {
+        addZone(recentCandles[i].high, 'Resistance (Swing High)');
+      }
+      // Swing low: lower than 2 candles on each side
+      if (
+        recentCandles[i].low < recentCandles[i - 1].low &&
+        recentCandles[i].low < recentCandles[i - 2].low &&
+        recentCandles[i].low < recentCandles[i + 1].low &&
+        recentCandles[i].low < recentCandles[i + 2].low
+      ) {
+        addZone(recentCandles[i].low, 'Support (Swing Low)');
+      }
+    }
+
+    // 2. EMA9
+    let ema9 = closes[0];
+    const k9 = 2 / (9 + 1);
+    for (let i = 1; i < closes.length; i++) {
+      ema9 = closes[i] * k9 + ema9 * (1 - k9);
+    }
+    addZone(ema9, 'EMA 9');
+
+    // 3. EMA21
+    let ema21 = closes[0];
+    const k21 = 2 / (21 + 1);
+    for (let i = 1; i < closes.length; i++) {
+      ema21 = closes[i] * k21 + ema21 * (1 - k21);
+    }
+    addZone(ema21, 'EMA 21');
+
+    // 4. SMA50
+    const sma50Period = Math.min(50, closes.length);
+    const sma50Slice = closes.slice(closes.length - sma50Period);
+    const sma50 = sma50Slice.reduce((a, b) => a + b, 0) / sma50Period;
+    addZone(sma50, 'SMA 50');
+
+    // 5. Bollinger Bands (20, 2)
+    const bbPeriod = Math.min(20, closes.length);
+    const bbSlice = closes.slice(closes.length - bbPeriod);
+    const bbMean = bbSlice.reduce((a, b) => a + b, 0) / bbPeriod;
+    const bbStd = Math.sqrt(bbSlice.reduce((a, v) => a + (v - bbMean) ** 2, 0) / bbPeriod);
+    const bbUpper = bbMean + 2 * bbStd;
+    const bbLower = bbMean - 2 * bbStd;
+    addZone(bbUpper, 'Bollinger Upper Band');
+    addZone(bbMean, 'Bollinger Middle Band');
+    addZone(bbLower, 'Bollinger Lower Band');
+
+    // 6. RSI zones — flag overbought/oversold as a source on the current price zone
+    let rsi = 50;
+    if (closes.length >= 15) {
+      let gains = 0;
+      let losses = 0;
+      const offset = closes.length - 15;
+      for (let i = 1; i <= 14; i++) {
+        const diff = closes[offset + i] - closes[offset + i - 1];
+        if (diff > 0) gains += diff;
+        else losses += Math.abs(diff);
+      }
+      const avgGain = gains / 14;
+      const avgLoss = losses / 14;
+      rsi = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+    }
+
+    if (rsi >= 70) {
+      addZone(currentPrice, 'RSI Overbought');
+    } else if (rsi <= 30) {
+      addZone(currentPrice, 'RSI Oversold');
+    }
+
+    // 7. Recent high/low as support/resistance
+    const recentHigh = Math.max(...highs.slice(-20));
+    const recentLow = Math.min(...lows.slice(-20));
+    addZone(recentHigh, 'Recent 20-bar High');
+    addZone(recentLow, 'Recent 20-bar Low');
+
+    // Build zones array
+    const zones = Array.from(zoneSources.entries()).map(([price, sources]) => {
+      const count = sources.size;
+      let strength: 'weak' | 'moderate' | 'strong' | 'extreme';
+      if (count >= 4) strength = 'extreme';
+      else if (count === 3) strength = 'strong';
+      else if (count === 2) strength = 'moderate';
+      else strength = 'weak';
+
+      const distanceFromCurrent = currentPrice > 0
+        ? Math.round(((price - currentPrice) / currentPrice) * 10000) / 100
+        : 0;
+
+      return {
+        price: Math.round(price * 100000000) / 100000000,
+        sources: Array.from(sources),
+        count,
+        strength,
+        distancePercent: distanceFromCurrent,
+      };
+    });
+
+    // Sort by count descending, then by proximity to current price
+    zones.sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return Math.abs(a.distancePercent) - Math.abs(b.distancePercent);
+    });
+
+    // Filter out zones too far away (> 15% from current price)
+    const filteredZones = zones.filter((z) => Math.abs(z.distancePercent) <= 15);
+
+    const response = {
+      success: true,
+      data: {
+        symbol,
+        currentPrice,
+        rsi: Math.round(rsi * 100) / 100,
+        zones: filteredZones,
+      },
+    };
+
+    await redis.set(cacheKey, JSON.stringify(response), 'EX', 300);
+    res.json(response);
+  } catch (err) {
+    logger.error('Confluence error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 export default router;
