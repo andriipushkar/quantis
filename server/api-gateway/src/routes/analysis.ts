@@ -118,6 +118,234 @@ router.get('/signals/:id', async (req: Request, res: Response) => {
   }
 });
 
+// GET /patterns/:symbol — Detect chart patterns from candle data
+router.get('/patterns/:symbol', async (req: Request, res: Response) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+    const { timeframe = '1h' } = req.query;
+    const table = `ohlcv_${timeframe}`;
+
+    // Fetch pair
+    const pairResult = await query(
+      `SELECT tp.id FROM trading_pairs tp
+       JOIN exchanges e ON e.id = tp.exchange_id
+       WHERE tp.symbol = $1 AND tp.is_active = true
+       LIMIT 1`,
+      [symbol]
+    );
+
+    if (pairResult.rows.length === 0) {
+      res.status(404).json({ success: false, error: `No data found for ${symbol}` });
+      return;
+    }
+
+    const pairId = pairResult.rows[0].id;
+
+    // Fetch last 50 candles
+    const candlesResult = await query(
+      `SELECT o.time, o.open, o.high, o.low, o.close, o.volume
+       FROM ${table} o
+       WHERE o.pair_id = $1
+       ORDER BY o.time DESC
+       LIMIT 50`,
+      [pairId]
+    );
+
+    const candles = candlesResult.rows
+      .map((r: { time: string; open: string; high: string; low: string; close: string; volume: string }) => ({
+        time: new Date(r.time),
+        open: parseFloat(r.open),
+        high: parseFloat(r.high),
+        low: parseFloat(r.low),
+        close: parseFloat(r.close),
+        volume: parseFloat(r.volume),
+      }))
+      .reverse();
+
+    if (candles.length < 10) {
+      res.json({ success: true, data: { symbol, timeframe, patterns: [] } });
+      return;
+    }
+
+    interface PatternResult {
+      name: string;
+      type: 'bullish' | 'bearish' | 'neutral';
+      confidence: number;
+      index: number;
+      description: string;
+    }
+
+    const patterns: PatternResult[] = [];
+
+    // --- Double Top: two similar highs with valley between ---
+    for (let i = 4; i < candles.length - 1; i++) {
+      // Look for two peaks within 2% of each other
+      for (let j = i + 3; j < Math.min(i + 20, candles.length); j++) {
+        const peak1 = candles[i].high;
+        const peak2 = candles[j].high;
+        const diff = Math.abs(peak1 - peak2) / peak1;
+        if (diff < 0.02) {
+          // Check valley between
+          let minBetween = Infinity;
+          for (let k = i + 1; k < j; k++) {
+            minBetween = Math.min(minBetween, candles[k].low);
+          }
+          const dropFromPeak = (peak1 - minBetween) / peak1;
+          if (dropFromPeak > 0.01) {
+            const conf = Math.min(90, Math.round(60 + (1 - diff / 0.02) * 30));
+            patterns.push({
+              name: 'Double Top',
+              type: 'bearish',
+              confidence: conf,
+              index: j,
+              description: `Two similar highs at ~$${peak1.toFixed(2)} with a valley between. Potential bearish reversal signal.`,
+            });
+            break;
+          }
+        }
+      }
+    }
+
+    // --- Double Bottom: two similar lows with peak between ---
+    for (let i = 4; i < candles.length - 1; i++) {
+      for (let j = i + 3; j < Math.min(i + 20, candles.length); j++) {
+        const low1 = candles[i].low;
+        const low2 = candles[j].low;
+        const diff = Math.abs(low1 - low2) / low1;
+        if (diff < 0.02) {
+          let maxBetween = -Infinity;
+          for (let k = i + 1; k < j; k++) {
+            maxBetween = Math.max(maxBetween, candles[k].high);
+          }
+          const riseFromLow = (maxBetween - low1) / low1;
+          if (riseFromLow > 0.01) {
+            const conf = Math.min(90, Math.round(60 + (1 - diff / 0.02) * 30));
+            patterns.push({
+              name: 'Double Bottom',
+              type: 'bullish',
+              confidence: conf,
+              index: j,
+              description: `Two similar lows at ~$${low1.toFixed(2)} with a peak between. Potential bullish reversal signal.`,
+            });
+            break;
+          }
+        }
+      }
+    }
+
+    // --- Higher Highs / Lower Lows (last 10 candles) ---
+    const last10 = candles.slice(-10);
+    let hh = 0;
+    let ll = 0;
+    for (let i = 1; i < last10.length; i++) {
+      if (last10[i].high > last10[i - 1].high) hh++;
+      if (last10[i].low < last10[i - 1].low) ll++;
+    }
+    if (hh >= 6) {
+      patterns.push({
+        name: 'Higher Highs',
+        type: 'bullish',
+        confidence: Math.min(85, 50 + hh * 5),
+        index: candles.length - 1,
+        description: `${hh} out of last 9 candles made higher highs, indicating a strong uptrend structure.`,
+      });
+    }
+    if (ll >= 6) {
+      patterns.push({
+        name: 'Lower Lows',
+        type: 'bearish',
+        confidence: Math.min(85, 50 + ll * 5),
+        index: candles.length - 1,
+        description: `${ll} out of last 9 candles made lower lows, indicating a strong downtrend structure.`,
+      });
+    }
+
+    // --- Single candle patterns on last 5 candles ---
+    for (let i = Math.max(0, candles.length - 5); i < candles.length; i++) {
+      const c = candles[i];
+      const body = Math.abs(c.close - c.open);
+      const range = c.high - c.low;
+      const upperShadow = c.high - Math.max(c.open, c.close);
+      const lowerShadow = Math.min(c.open, c.close) - c.low;
+
+      // Doji: open ~ close (body within 0.1% of range)
+      if (range > 0 && body / range < 0.1) {
+        patterns.push({
+          name: 'Doji',
+          type: 'neutral',
+          confidence: Math.round(60 + (1 - body / range / 0.1) * 25),
+          index: i,
+          description: 'Open and close are nearly equal, signaling indecision. Watch for confirmation in next candles.',
+        });
+      }
+
+      // Hammer: small body at top, long lower shadow (> 2x body)
+      if (body > 0 && lowerShadow > body * 2 && upperShadow < body * 0.5) {
+        patterns.push({
+          name: 'Hammer',
+          type: 'bullish',
+          confidence: Math.round(55 + Math.min(30, (lowerShadow / body - 2) * 10)),
+          index: i,
+          description: 'Small body at top with long lower shadow. Potential bullish reversal when found in a downtrend.',
+        });
+      }
+
+      // Engulfing: current body engulfs previous body
+      if (i > 0) {
+        const prev = candles[i - 1];
+        const prevBody = Math.abs(prev.close - prev.open);
+        if (body > prevBody && body > 0) {
+          // Bullish engulfing: prev bearish, current bullish
+          if (prev.close < prev.open && c.close > c.open &&
+            c.open <= prev.close && c.close >= prev.open) {
+            patterns.push({
+              name: 'Bullish Engulfing',
+              type: 'bullish',
+              confidence: Math.round(60 + Math.min(25, (body / prevBody - 1) * 20)),
+              index: i,
+              description: 'Current bullish candle fully engulfs previous bearish candle. Strong bullish reversal pattern.',
+            });
+          }
+          // Bearish engulfing: prev bullish, current bearish
+          if (prev.close > prev.open && c.close < c.open &&
+            c.open >= prev.close && c.close <= prev.open) {
+            patterns.push({
+              name: 'Bearish Engulfing',
+              type: 'bearish',
+              confidence: Math.round(60 + Math.min(25, (body / prevBody - 1) * 20)),
+              index: i,
+              description: 'Current bearish candle fully engulfs previous bullish candle. Strong bearish reversal pattern.',
+            });
+          }
+        }
+      }
+    }
+
+    // Deduplicate by name+index and sort by index descending
+    const seen = new Set<string>();
+    const uniquePatterns = patterns.filter((p) => {
+      const key = `${p.name}:${p.index}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    uniquePatterns.sort((a, b) => b.index - a.index);
+
+    res.json({
+      success: true,
+      data: {
+        symbol,
+        timeframe,
+        patterns: uniquePatterns,
+      },
+    });
+  } catch (err) {
+    logger.error('Pattern detection error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 // --- Helper math functions ---
 
 function round(n: number): number {

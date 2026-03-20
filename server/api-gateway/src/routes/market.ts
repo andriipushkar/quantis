@@ -1685,4 +1685,106 @@ router.get('/confluence/:symbol', async (req: Request, res: Response) => {
   }
 });
 
+// GET /liquidations/:symbol — Simulated liquidation heatmap data
+router.get('/liquidations/:symbol', async (req: Request, res: Response) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+
+    // Check cache (2 min)
+    const cacheKey = `market:liquidations:${symbol}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+
+    // Get current price from ticker
+    const exchanges = ['binance', 'bybit', 'okx'];
+    let currentPrice = 0;
+    for (const exchange of exchanges) {
+      const data = await redis.get(`ticker:${exchange}:${symbol}`);
+      if (data) {
+        const parsed = JSON.parse(data);
+        currentPrice = parsed.price ?? 0;
+        break;
+      }
+    }
+
+    if (currentPrice === 0) {
+      res.status(404).json({ success: false, error: `No ticker data for ${symbol}` });
+      return;
+    }
+
+    // Seeded pseudo-random for stable results within cache window
+    function pseudoRandom(seed: string): number {
+      let h = 0;
+      for (let i = 0; i < seed.length; i++) {
+        h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
+      }
+      return (Math.abs(h) % 10000) / 10000;
+    }
+
+    const levels: Array<{
+      price: number;
+      side: 'long' | 'short';
+      volume: number;
+      distance_pct: number;
+    }> = [];
+
+    const hourSeed = new Date().toISOString().slice(0, 13);
+
+    // 10 levels below current price (long liquidations)
+    for (let i = 1; i <= 10; i++) {
+      const distancePct = i * 0.5;
+      const price = currentPrice * (1 - distancePct / 100);
+      // Volume higher near current price, using inverse distance weighting
+      const baseVolume = 100000 + pseudoRandom(`${symbol}:long:${i}:${hourSeed}`) * 49900000;
+      const proximityMultiplier = Math.max(0.2, 1 - (i - 1) * 0.08);
+      const volume = Math.round(baseVolume * proximityMultiplier);
+
+      levels.push({
+        price: Math.round(price * 100) / 100,
+        side: 'long',
+        volume,
+        distance_pct: -distancePct,
+      });
+    }
+
+    // 10 levels above current price (short liquidations)
+    for (let i = 1; i <= 10; i++) {
+      const distancePct = i * 0.5;
+      const price = currentPrice * (1 + distancePct / 100);
+      const baseVolume = 100000 + pseudoRandom(`${symbol}:short:${i}:${hourSeed}`) * 49900000;
+      const proximityMultiplier = Math.max(0.2, 1 - (i - 1) * 0.08);
+      const volume = Math.round(baseVolume * proximityMultiplier);
+
+      levels.push({
+        price: Math.round(price * 100) / 100,
+        side: 'short',
+        volume,
+        distance_pct: distancePct,
+      });
+    }
+
+    // Sort by price ascending
+    levels.sort((a, b) => a.price - b.price);
+
+    const response = {
+      success: true,
+      data: {
+        symbol,
+        currentPrice,
+        levels,
+      },
+    };
+
+    // Cache 2 minutes
+    await redis.set(cacheKey, JSON.stringify(response), 'EX', 120);
+    res.json(response);
+  } catch (err) {
+    logger.error('Liquidations error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 export default router;

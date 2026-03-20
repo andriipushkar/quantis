@@ -35,6 +35,8 @@ import {
   Rewind,
   MessageSquare,
   Crosshair,
+  Flame,
+  Eye,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -105,6 +107,8 @@ const navItems: NavItem[] = [
   { icon: Users, labelKey: 'nav.copyTrading', path: '/copy-trading' },
   { icon: MessageSquare, labelKey: 'nav.social', path: '/social' },
   { icon: Crosshair, labelKey: 'nav.confluence', path: '/confluence' },
+  { icon: Flame, labelKey: 'nav.liquidations', path: '/liquidations' },
+  { icon: Eye, labelKey: 'nav.patternScanner', path: '/pattern-scanner' },
   { icon: User, labelKey: 'nav.profile', path: '/profile' },
   { icon: Rewind, labelKey: 'nav.chartReplay', path: '/chart-replay' },
   { icon: SettingsIcon, labelKey: 'nav.settings', path: '/settings' },

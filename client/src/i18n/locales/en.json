@@ -29,7 +29,10 @@
     "chartReplay": "Chart Replay",
     "copyTrading": "Copy Trading",
     "social": "Social Feed",
-    "confluence": "Confluence Map"
+    "confluence": "Confluence Map",
+    "liquidations": "Liquidations",
+    "patternScanner": "Pattern Scanner",
+    "antiLiquidation": "Anti-Liquidation"
   },
   "auth": {
     "login": "Log In",
