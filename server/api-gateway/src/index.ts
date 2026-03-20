@@ -34,6 +34,8 @@ import marketplaceRoutes from './routes/marketplace.js';
 import walletTrackerRoutes from './routes/wallet-tracker.js';
 import taxRoutes from './routes/tax.js';
 import emailRoutes from './routes/emails.js';
+import influencerRoutes from './routes/influencers.js';
+import tokenomicsRoutes from './routes/tokenomics.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import Redis from 'ioredis';
 
@@ -94,6 +96,8 @@ app.use('/api/v1/marketplace', marketplaceRoutes);
 app.use('/api/v1/wallets', walletTrackerRoutes);
 app.use('/api/v1/tax', taxRoutes);
 app.use('/api/v1/emails', emailRoutes);
+app.use('/api/v1/influencers', influencerRoutes);
+app.use('/api/v1/tokenomics', tokenomicsRoutes);
 
 // Health check
 app.get('/health', (_req, res) => {

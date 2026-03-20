@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useMemo, useState } from 'react';
+import React, { useEffect, useRef, useMemo, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Wallet,
@@ -9,6 +9,8 @@ import {
   Eye,
   ArrowUpRight,
   Download,
+  RefreshCw,
+  Target,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
@@ -16,6 +18,7 @@ import { Spinner } from '@/components/common/Spinner';
 import { cn } from '@/utils/cn';
 import { getTickers, type TickerData } from '@/services/api';
 import { useMarketStore } from '@/stores/market';
+import { useToastStore } from '@/stores/toast';
 
 /* ── Demo holdings ─────────────────────────────────────────────── */
 const DEMO_HOLDINGS = [
@@ -423,6 +426,199 @@ const Portfolio: React.FC = () => {
           </p>
         </div>
       </div>
+
+      {/* ── Rebalance Section ──────────────────────────────────── */}
+      {!loading && totalValue > 0 && (
+        <RebalanceSection positions={positions} totalValue={totalValue} />
+      )}
+    </div>
+  );
+};
+
+/* ── Rebalance Section Component ─────────────────────────────── */
+
+interface RebalanceSectionProps {
+  positions: { asset: string; symbol: string; amount: number; price: number; change24h: number; marketValue: number; color: string }[];
+  totalValue: number;
+}
+
+const DEFAULT_TARGETS: Record<string, number> = {
+  BTC: 50,
+  ETH: 30,
+  SOL: 15,
+  BNB: 5,
+};
+
+const RebalanceSection: React.FC<RebalanceSectionProps> = ({ positions, totalValue }) => {
+  const { addToast } = useToastStore();
+  const [targets, setTargets] = useState<Record<string, number>>(() => {
+    const init: Record<string, number> = {};
+    positions.forEach((p) => {
+      init[p.asset] = DEFAULT_TARGETS[p.asset] ?? Math.round((p.marketValue / totalValue) * 100);
+    });
+    return init;
+  });
+
+  const totalTarget = Object.values(targets).reduce((a, b) => a + b, 0);
+
+  const suggestions = useMemo(() => {
+    return positions.map((p) => {
+      const currentPct = totalValue > 0 ? (p.marketValue / totalValue) * 100 : 0;
+      const targetPct = targets[p.asset] ?? 0;
+      const diff = targetPct - currentPct;
+      const diffUsd = (diff / 100) * totalValue;
+      return {
+        asset: p.asset,
+        color: p.color,
+        currentPct,
+        targetPct,
+        diffUsd,
+        action: diffUsd > 1 ? 'buy' as const : diffUsd < -1 ? 'sell' as const : 'hold' as const,
+      };
+    });
+  }, [positions, targets, totalValue]);
+
+  const handleTargetChange = (asset: string, val: string) => {
+    const num = Math.max(0, Math.min(100, parseInt(val) || 0));
+    setTargets((prev) => ({ ...prev, [asset]: num }));
+  };
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-4">
+        <Target className="w-4 h-4 text-primary" />
+        <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">
+          Portfolio Rebalance
+        </h2>
+      </div>
+
+      <Card>
+        <CardContent className="p-5 space-y-5">
+          {/* Target Allocation Inputs */}
+          <div>
+            <p className="text-xs text-muted-foreground mb-3">
+              Set your target allocation for each asset. Total should equal 100%.
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {positions.map((p) => (
+                <div key={p.asset} className="space-y-1">
+                  <label className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                    <div
+                      className="w-3 h-3 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: p.color }}
+                    />
+                    {p.asset}
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={targets[p.asset] ?? 0}
+                      onChange={(e) => handleTargetChange(p.asset, e.target.value)}
+                      className="w-full h-8 px-2 bg-secondary border border-border rounded-lg text-sm text-foreground text-center font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                    <span className="text-xs text-muted-foreground">%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {totalTarget !== 100 && (
+              <p className={cn(
+                'text-xs mt-2 font-medium',
+                totalTarget > 100 ? 'text-danger' : 'text-yellow-400'
+              )}>
+                Total: {totalTarget}% (must equal 100%)
+              </p>
+            )}
+          </div>
+
+          {/* Current vs Target Bars */}
+          <div className="space-y-3">
+            <p className="text-xs font-medium text-foreground">Current vs Target</p>
+            {suggestions.map((s) => (
+              <div key={s.asset} className="space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-foreground font-medium">{s.asset}</span>
+                  <span className="text-muted-foreground">
+                    {s.currentPct.toFixed(1)}% → {s.targetPct.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="flex gap-1 h-2">
+                  {/* Current */}
+                  <div className="flex-1 h-full rounded-full bg-secondary overflow-hidden">
+                    <div
+                      className="h-full rounded-full opacity-60"
+                      style={{
+                        width: `${Math.min(s.currentPct, 100)}%`,
+                        backgroundColor: s.color,
+                      }}
+                    />
+                  </div>
+                  {/* Target */}
+                  <div className="flex-1 h-full rounded-full bg-secondary overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${Math.min(s.targetPct, 100)}%`,
+                        backgroundColor: s.color,
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-between text-[10px] text-muted-foreground">
+                  <span>Current</span>
+                  <span>Target</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Rebalance Suggestions */}
+          {totalTarget === 100 && (
+            <div>
+              <p className="text-xs font-medium text-foreground mb-2">Rebalance Actions</p>
+              <div className="space-y-1.5">
+                {suggestions
+                  .filter((s) => s.action !== 'hold')
+                  .map((s) => (
+                    <div
+                      key={s.asset}
+                      className={cn(
+                        'flex items-center justify-between px-3 py-2 rounded-lg border text-xs',
+                        s.action === 'buy'
+                          ? 'bg-success/10 border-success/20 text-success'
+                          : 'bg-danger/10 border-danger/20 text-danger'
+                      )}
+                    >
+                      <span className="font-medium">
+                        {s.action === 'buy' ? 'Buy' : 'Sell'} {s.asset}
+                      </span>
+                      <span className="font-mono font-bold">
+                        ${Math.abs(s.diffUsd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  ))}
+                {suggestions.every((s) => s.action === 'hold') && (
+                  <p className="text-xs text-muted-foreground text-center py-2">
+                    Portfolio is already balanced within targets.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Auto-Rebalance Button */}
+          <Button
+            variant="secondary"
+            className="w-full"
+            onClick={() => addToast('Coming soon — auto-rebalancing with exchange API', 'info')}
+          >
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Auto-Rebalance
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 };

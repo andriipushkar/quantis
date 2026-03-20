@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth';
 import { useThemeStore } from '@/stores/theme';
 import {
@@ -459,6 +459,29 @@ const Settings: React.FC = () => {
           <p className="text-xs text-muted-foreground">
             Connect your Telegram account to receive signal alerts and notifications directly in your chat.
           </p>
+        </CardContent>
+      </Card>
+
+      {/* Legal Links */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Legal</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-4">
+            <Link
+              to="/terms"
+              className="text-sm text-primary hover:underline transition-colors"
+            >
+              Terms of Service
+            </Link>
+            <Link
+              to="/privacy"
+              className="text-sm text-primary hover:underline transition-colors"
+            >
+              Privacy Policy
+            </Link>
+          </div>
         </CardContent>
       </Card>
 

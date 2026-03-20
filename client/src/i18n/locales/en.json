@@ -43,7 +43,9 @@
     "harmonicPatterns": "Harmonic Patterns",
     "wyckoff": "Wyckoff Phase",
     "orderFlow": "Order Flow",
-    "status": "Status"
+    "status": "Status",
+    "influencerTracker": "Influencer Tracker",
+    "tokenomics": "Tokenomics"
   },
   "auth": {
     "login": "Log In",

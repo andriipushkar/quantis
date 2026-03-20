@@ -46,6 +46,8 @@ import {
   Code,
   Waves,
   Hexagon,
+  Megaphone,
+  PieChart,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -128,6 +130,8 @@ const navItems: NavItem[] = [
   { icon: Store, labelKey: 'nav.marketplace', path: '/marketplace' },
   { icon: Wallet2, labelKey: 'nav.walletTracker', path: '/wallet-tracker' },
   { icon: FileText, labelKey: 'nav.taxReport', path: '/tax-report' },
+  { icon: Megaphone, labelKey: 'nav.influencerTracker', path: '/influencers' },
+  { icon: PieChart, labelKey: 'nav.tokenomics', path: '/tokenomics' },
   { icon: User, labelKey: 'nav.profile', path: '/profile' },
   { icon: Rewind, labelKey: 'nav.chartReplay', path: '/chart-replay' },
   { icon: SettingsIcon, labelKey: 'nav.settings', path: '/settings' },

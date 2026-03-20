@@ -317,8 +317,8 @@ const Landing: React.FC = () => {
             &copy; 2026 Quantis. All rights reserved.
           </span>
           <div className="flex items-center gap-6 text-sm text-muted-foreground">
-            <button className="hover:text-foreground transition-colors">Terms</button>
-            <button className="hover:text-foreground transition-colors">Privacy</button>
+            <button className="hover:text-foreground transition-colors" onClick={() => navigate('/terms')}>Terms</button>
+            <button className="hover:text-foreground transition-colors" onClick={() => navigate('/privacy')}>Privacy</button>
             <button className="hover:text-foreground transition-colors">Contact</button>
             <button className="hover:text-foreground transition-colors" onClick={() => navigate('/status')}>Status</button>
           </div>

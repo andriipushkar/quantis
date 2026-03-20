@@ -56,6 +56,10 @@ const Options = lazy(() => import('@/pages/Options'));
 const IndicatorLibrary = lazy(() => import('@/pages/IndicatorLibrary'));
 const ScriptEditor = lazy(() => import('@/pages/ScriptEditor'));
 const Status = lazy(() => import('@/pages/Status'));
+const Terms = lazy(() => import('@/pages/Terms'));
+const Privacy = lazy(() => import('@/pages/Privacy'));
+const InfluencerTracker = lazy(() => import('@/pages/InfluencerTracker'));
+const Tokenomics = lazy(() => import('@/pages/Tokenomics'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
 const PageLoader: React.FC = () => (
@@ -119,6 +123,8 @@ const App: React.FC = () => {
           <Route path="/register" element={<Register />} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/status" element={<Status />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/privacy" element={<Privacy />} />
 
           {/* App routes wrapped in Layout */}
           <Route element={<Layout />}>
@@ -167,6 +173,8 @@ const App: React.FC = () => {
             <Route path="/indicators" element={<IndicatorLibrary />} />
             <Route path="/script-editor" element={<ScriptEditor />} />
             <Route path="/admin" element={<Admin />} />
+            <Route path="/influencers" element={<InfluencerTracker />} />
+            <Route path="/tokenomics" element={<Tokenomics />} />
           </Route>
 
           {/* Catch-all 404 */}

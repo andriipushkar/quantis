@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Bell, Plus, Trash2, Check, ChevronRight } from 'lucide-react';
+import { Bell, Plus, Trash2, Check, ChevronRight, Link2, Zap, ArrowRight } from 'lucide-react';
 import { getAlerts, createAlert, deleteAlert, getPairs, getTicker, type Alert, type TradingPair } from '@/services/api';
 import { useAuthStore } from '@/stores/auth';
+import { useToastStore } from '@/stores/toast';
 import { cn } from '@/utils/cn';
 
 type ConditionType = 'price_above' | 'price_below' | 'rsi_above' | 'rsi_below' | 'price_change_pct';
@@ -406,6 +407,123 @@ const Alerts: React.FC = () => {
           ))}
         </div>
       )}
+
+      {/* ── Alert Chains (Pro Feature) ──────────────────────────── */}
+      <AlertChains />
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Alert Chains Component
+// ---------------------------------------------------------------------------
+
+interface ChainTemplate {
+  name: string;
+  description: string;
+  steps: { label: string; type: 'when' | 'check' | 'alert' }[];
+}
+
+const CHAIN_TEMPLATES: ChainTemplate[] = [
+  {
+    name: 'Macro Crash Detector',
+    description: 'Detects potential market crashes using price action + RSI confirmation.',
+    steps: [
+      { label: 'BTC drops > 5% in 4H', type: 'when' },
+      { label: 'RSI < 35', type: 'check' },
+      { label: 'Notify immediately', type: 'alert' },
+    ],
+  },
+  {
+    name: 'Whale + TA Confluence',
+    description: 'Whale deposit at overbought conditions signals potential top.',
+    steps: [
+      { label: 'Whale deposit > $10M to exchange', type: 'when' },
+      { label: 'RSI > 70', type: 'check' },
+      { label: 'Notify immediately', type: 'alert' },
+    ],
+  },
+  {
+    name: 'Funding Rate Arbitrage',
+    description: 'Alerts when funding rate diverges across exchanges, creating arb opportunity.',
+    steps: [
+      { label: 'Funding rate divergence > 0.07% across exchanges', type: 'when' },
+      { label: 'Notify immediately', type: 'alert' },
+    ],
+  },
+];
+
+const STEP_COLORS = {
+  when: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+  check: 'bg-purple-500/15 text-purple-400 border-purple-500/30',
+  alert: 'bg-orange-500/15 text-orange-400 border-orange-500/30',
+};
+
+const STEP_LABELS = {
+  when: 'WHEN',
+  check: 'AND CHECK',
+  alert: 'THEN ALERT',
+};
+
+const AlertChains: React.FC = () => {
+  const { addToast } = useToastStore();
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Link2 className="w-4 h-4 text-primary" />
+        <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">
+          Alert Chains
+        </h2>
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">
+          <Zap className="w-2.5 h-2.5" />
+          PRO
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {CHAIN_TEMPLATES.map((chain) => (
+          <div
+            key={chain.name}
+            className="bg-card border border-border rounded-xl p-5 space-y-4 transition-all duration-200 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5"
+          >
+            <div>
+              <p className="text-sm font-semibold text-foreground">{chain.name}</p>
+              <p className="text-xs text-muted-foreground mt-1">{chain.description}</p>
+            </div>
+
+            {/* Chain logic visualization */}
+            <div className="space-y-2">
+              {chain.steps.map((step, i) => (
+                <React.Fragment key={i}>
+                  <div
+                    className={cn(
+                      'flex items-start gap-2 px-3 py-2 rounded-lg border text-xs',
+                      STEP_COLORS[step.type]
+                    )}
+                  >
+                    <span className="font-bold whitespace-nowrap">{STEP_LABELS[step.type]}</span>
+                    <span className="opacity-80">{step.label}</span>
+                  </div>
+                  {i < chain.steps.length - 1 && (
+                    <div className="flex justify-center">
+                      <ArrowRight className="w-3 h-3 text-muted-foreground rotate-90" />
+                    </div>
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+
+            <button
+              onClick={() => addToast('Pro feature — upgrade to use Alert Chains', 'info')}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
+            >
+              <Zap className="w-3 h-3" />
+              Activate
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
