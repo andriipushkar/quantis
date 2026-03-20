@@ -53,6 +53,11 @@ const WalletTracker = lazy(() => import('@/pages/WalletTracker'));
 const TaxReport = lazy(() => import('@/pages/TaxReport'));
 const Admin = lazy(() => import('@/pages/Admin'));
 const Options = lazy(() => import('@/pages/Options'));
+const IntermarketAnalysis = lazy(() => import('@/pages/IntermarketAnalysis'));
+const DevActivity = lazy(() => import('@/pages/DevActivity'));
+const NetworkMetrics = lazy(() => import('@/pages/NetworkMetrics'));
+const RenkoChart = lazy(() => import('@/pages/RenkoChart'));
+const BitcoinModels = lazy(() => import('@/pages/BitcoinModels'));
 const IndicatorLibrary = lazy(() => import('@/pages/IndicatorLibrary'));
 const ScriptEditor = lazy(() => import('@/pages/ScriptEditor'));
 const Status = lazy(() => import('@/pages/Status'));
@@ -174,6 +179,11 @@ const App: React.FC = () => {
             <Route path="/wallet-tracker" element={<WalletTracker />} />
             <Route path="/tax-report" element={<TaxReport />} />
             <Route path="/options" element={<Options />} />
+            <Route path="/intermarket" element={<IntermarketAnalysis />} />
+            <Route path="/dev-activity" element={<DevActivity />} />
+            <Route path="/network-metrics" element={<NetworkMetrics />} />
+            <Route path="/renko" element={<RenkoChart />} />
+            <Route path="/btc-models" element={<BitcoinModels />} />
             <Route path="/indicators" element={<IndicatorLibrary />} />
             <Route path="/script-editor" element={<ScriptEditor />} />
             <Route path="/admin" element={<Admin />} />

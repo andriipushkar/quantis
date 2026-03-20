@@ -48,7 +48,12 @@
     "tokenomics": "Tokenomics",
     "defi": "DeFi",
     "marketProfile": "Market Profile",
-    "apiDocs": "API Docs"
+    "apiDocs": "API Docs",
+    "intermarket": "Intermarket",
+    "devActivity": "Dev Activity",
+    "networkMetrics": "Network Metrics",
+    "renko": "Renko Chart",
+    "btcModels": "BTC Models"
   },
   "auth": {
     "login": "Log In",

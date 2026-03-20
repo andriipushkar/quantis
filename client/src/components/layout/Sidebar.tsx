@@ -49,6 +49,11 @@ import {
   Megaphone,
   PieChart,
   Coins,
+  Globe2,
+  GitBranch,
+  Network,
+  Box,
+  CircleDollarSign as BitcoinIcon,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -108,6 +113,11 @@ const navItems: NavItem[] = [
   { icon: Coins, labelKey: 'nav.defi', path: '/defi' },
   { icon: BarChart2, labelKey: 'nav.marketProfile', path: '/market-profile' },
   { icon: BarChart2, labelKey: 'nav.options', path: '/options' },
+  { icon: Globe2, labelKey: 'nav.intermarket', path: '/intermarket' },
+  { icon: GitBranch, labelKey: 'nav.devActivity', path: '/dev-activity' },
+  { icon: Network, labelKey: 'nav.networkMetrics', path: '/network-metrics' },
+  { icon: Box, labelKey: 'nav.renko', path: '/renko' },
+  { icon: BitcoinIcon, labelKey: 'nav.btcModels', path: '/btc-models' },
   { icon: BookMarked, labelKey: 'nav.indicatorLibrary', path: '/indicators' },
   { icon: Code, labelKey: 'nav.scriptEditor', path: '/script-editor' },
   { icon: Bot, labelKey: 'nav.copilot', path: '/copilot' },

@@ -2199,4 +2199,681 @@ router.get('/profile/:symbol', async (req: Request, res: Response) => {
   }
 });
 
+// =====================================================================
+// GET /options/:symbol — Simulated options chain data
+// =====================================================================
+router.get('/options/:symbol', async (req: Request, res: Response) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+
+    // Check cache (5 min)
+    const cacheKey = `market:options:${symbol}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+
+    // Get current price from Redis ticker
+    let currentPrice = 0;
+    const exchanges = ['binance', 'bybit', 'okx'];
+    for (const exchange of exchanges) {
+      const data = await redis.get(`ticker:${exchange}:${symbol}`);
+      if (data) {
+        const parsed = JSON.parse(data);
+        currentPrice = parsed.price ?? 0;
+        break;
+      }
+    }
+
+    if (currentPrice === 0) {
+      // Fallback prices
+      const fallbacks: Record<string, number> = {
+        BTCUSDT: 97500,
+        ETHUSDT: 3450,
+        SOLUSDT: 178,
+        BNBUSDT: 620,
+      };
+      currentPrice = fallbacks[symbol] || 100;
+    }
+
+    // Generate expiry date (next Friday)
+    const now = new Date();
+    const daysUntilFriday = (5 - now.getUTCDay() + 7) % 7 || 7;
+    const expiry = new Date(now.getTime() + daysUntilFriday * 86400000);
+    const expiryDate = expiry.toISOString().split('T')[0];
+    const daysToExpiry = daysUntilFriday;
+    const T = daysToExpiry / 365;
+
+    // Generate 5 strikes above and 5 below, spaced ~2% apart
+    const spacing = currentPrice * 0.02;
+    const roundTo = currentPrice > 10000 ? 500 : currentPrice > 1000 ? 50 : currentPrice > 100 ? 5 : 1;
+    const atmStrike = Math.round(currentPrice / roundTo) * roundTo;
+
+    const chain: Array<{
+      strike: number;
+      callPrice: number;
+      putPrice: number;
+      callIV: number;
+      putIV: number;
+      callDelta: number;
+      putDelta: number;
+      callGamma: number;
+      callTheta: number;
+      callOI: number;
+      putOI: number;
+      callVolume: number;
+      putVolume: number;
+    }> = [];
+
+    for (let i = -5; i <= 5; i++) {
+      const strike = atmStrike + i * Math.round(spacing / roundTo) * roundTo;
+      const moneyness = (strike - currentPrice) / currentPrice;
+      const absMoneyness = Math.abs(moneyness);
+
+      // IV smile: higher at extremes, lower at ATM
+      const baseIV = 0.45;
+      const ivSmile = baseIV + absMoneyness * 1.5;
+      const callIV = Math.round((ivSmile + (moneyness > 0 ? 0.02 : -0.01)) * 1000) / 10;
+      const putIV = Math.round((ivSmile + (moneyness < 0 ? 0.02 : -0.01)) * 1000) / 10;
+
+      // Simplified Black-Scholes-ish pricing
+      const intrinsicCall = Math.max(0, currentPrice - strike);
+      const intrinsicPut = Math.max(0, strike - currentPrice);
+      const timeValue = currentPrice * ivSmile * Math.sqrt(T) * 0.4;
+      const callPrice = Math.round((intrinsicCall + timeValue * Math.max(0.1, 1 - moneyness * 2)) * 100) / 100;
+      const putPrice = Math.round((intrinsicPut + timeValue * Math.max(0.1, 1 + moneyness * 2)) * 100) / 100;
+
+      // Delta approximation
+      const callDelta = Math.round(Math.max(0.02, Math.min(0.98, 0.5 - moneyness * 3)) * 100) / 100;
+      const putDelta = Math.round((callDelta - 1) * 100) / 100;
+
+      // Gamma (highest ATM)
+      const callGamma = Math.round(Math.max(0.001, 0.05 * Math.exp(-moneyness * moneyness * 50)) * 10000) / 10000;
+
+      // Theta (negative, higher for ATM)
+      const callTheta = -Math.round(Math.max(5, currentPrice * ivSmile * 0.01 / Math.sqrt(T)) * 100) / 100;
+
+      // OI and Volume (higher near ATM)
+      const oiMultiplier = Math.max(0.2, Math.exp(-absMoneyness * absMoneyness * 30));
+      const baseOI = 5000;
+      const callOI = Math.round(baseOI * oiMultiplier * (1 + Math.random() * 0.3));
+      const putOI = Math.round(baseOI * oiMultiplier * 0.8 * (1 + Math.random() * 0.3));
+      const callVolume = Math.round(callOI * (0.1 + Math.random() * 0.15));
+      const putVolume = Math.round(putOI * (0.1 + Math.random() * 0.15));
+
+      chain.push({
+        strike,
+        callPrice: Math.max(0.01, callPrice),
+        putPrice: Math.max(0.01, putPrice),
+        callIV,
+        putIV,
+        callDelta,
+        putDelta,
+        callGamma,
+        callTheta,
+        callOI,
+        putOI,
+        callVolume,
+        putVolume,
+      });
+    }
+
+    // Calculate Max Pain: strike where total losses for option holders are maximized
+    let maxPainStrike = atmStrike;
+    let maxPainValue = Infinity;
+    for (const row of chain) {
+      let totalPain = 0;
+      for (const other of chain) {
+        if (row.strike > other.strike) {
+          totalPain += other.callOI * (row.strike - other.strike);
+        }
+        if (row.strike < other.strike) {
+          totalPain += other.putOI * (other.strike - row.strike);
+        }
+      }
+      if (totalPain < maxPainValue) {
+        maxPainValue = totalPain;
+        maxPainStrike = row.strike;
+      }
+    }
+
+    // Put/Call ratio from total OI
+    const totalCallOI = chain.reduce((s, r) => s + r.callOI, 0);
+    const totalPutOI = chain.reduce((s, r) => s + r.putOI, 0);
+    const putCallRatio = Math.round((totalPutOI / Math.max(1, totalCallOI)) * 100) / 100;
+
+    const response = {
+      success: true,
+      data: {
+        symbol,
+        currentPrice,
+        expiryDate,
+        chain,
+        maxPain: maxPainStrike,
+        putCallRatio,
+      },
+    };
+
+    await redis.set(cacheKey, JSON.stringify(response), 'EX', 300);
+    res.json(response);
+  } catch (err) {
+    logger.error('Options chain error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// =====================================================================
+// GET /multi-asset — Simulated TradFi + macro data (Intermarket)
+// =====================================================================
+router.get('/multi-asset', async (_req: Request, res: Response) => {
+  try {
+    const cacheKey = 'market:multi-asset';
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+
+    // Try to get live BTC price for correlation reference
+    let btcPrice = 97500;
+    const btcData = await redis.get('ticker:binance:BTCUSDT');
+    if (btcData) {
+      const parsed = JSON.parse(btcData);
+      btcPrice = parsed.price ?? btcPrice;
+    }
+
+    const assets = [
+      { name: 'S&P 500', symbol: 'SPX', price: 5430, change24h: 0.3, category: 'Indices' },
+      { name: 'NASDAQ', symbol: 'NDX', price: 17200, change24h: 0.5, category: 'Indices' },
+      { name: 'DXY', symbol: 'DXY', price: 104.2, change24h: -0.1, category: 'Forex' },
+      { name: 'Gold', symbol: 'XAU', price: 2340, change24h: 0.2, category: 'Commodities' },
+      { name: 'Silver', symbol: 'XAG', price: 29.50, change24h: 0.5, category: 'Commodities' },
+      { name: 'Oil WTI', symbol: 'WTI', price: 78.30, change24h: -0.8, category: 'Commodities' },
+      { name: 'US 10Y Yield', symbol: 'US10Y', price: 4.35, change24h: 0.02, category: 'Bonds' },
+      { name: 'US 2Y Yield', symbol: 'US2Y', price: 4.72, change24h: -0.01, category: 'Bonds' },
+      { name: 'VIX', symbol: 'VIX', price: 14.2, change24h: -1.5, category: 'Indices' },
+      { name: 'Bitcoin', symbol: 'BTC', price: btcPrice, change24h: 1.2, category: 'Crypto' },
+    ];
+
+    const correlations = [
+      { pair: 'BTC/SPX', value: 0.62 },
+      { pair: 'BTC/NDX', value: 0.68 },
+      { pair: 'BTC/DXY', value: -0.45 },
+      { pair: 'BTC/Gold', value: 0.32 },
+      { pair: 'BTC/Silver', value: 0.28 },
+      { pair: 'BTC/Oil', value: 0.15 },
+      { pair: 'BTC/US10Y', value: -0.22 },
+      { pair: 'BTC/VIX', value: -0.55 },
+    ];
+
+    // Risk-on/off determination: positive stock correlation + positive stocks + negative DXY = risk-on
+    const spxChange = assets.find((a) => a.symbol === 'SPX')!.change24h;
+    const dxyChange = assets.find((a) => a.symbol === 'DXY')!.change24h;
+    const vixPrice = assets.find((a) => a.symbol === 'VIX')!.price;
+    let riskOnOff: 'risk-on' | 'risk-off' | 'neutral' = 'neutral';
+    if (spxChange > 0 && dxyChange < 0 && vixPrice < 20) riskOnOff = 'risk-on';
+    else if (spxChange < -0.5 || vixPrice > 25) riskOnOff = 'risk-off';
+
+    const response = {
+      success: true,
+      data: {
+        assets,
+        correlations,
+        riskOnOff,
+        updatedAt: new Date().toISOString(),
+      },
+    };
+
+    await redis.set(cacheKey, JSON.stringify(response), 'EX', 1800);
+    res.json(response);
+  } catch (err) {
+    logger.error('Multi-asset error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// =====================================================================
+// GET /dev-activity — Mock developer activity for top projects
+// =====================================================================
+router.get('/dev-activity', async (_req: Request, res: Response) => {
+  try {
+    const cacheKey = 'market:dev-activity';
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+
+    const projects = [
+      {
+        symbol: 'BTC',
+        name: 'Bitcoin',
+        weeklyCommits: 85,
+        activeDevs: 45,
+        stars: 75000,
+        openIssues: 420,
+        lastRelease: '2026-01-15',
+        devScore: 92,
+      },
+      {
+        symbol: 'ETH',
+        name: 'Ethereum',
+        weeklyCommits: 120,
+        activeDevs: 180,
+        stars: 47000,
+        openIssues: 1250,
+        lastRelease: '2026-02-28',
+        devScore: 95,
+      },
+      {
+        symbol: 'SOL',
+        name: 'Solana',
+        weeklyCommits: 95,
+        activeDevs: 80,
+        stars: 12000,
+        openIssues: 340,
+        lastRelease: '2026-03-05',
+        devScore: 78,
+      },
+      {
+        symbol: 'DOT',
+        name: 'Polkadot',
+        weeklyCommits: 70,
+        activeDevs: 55,
+        stars: 7100,
+        openIssues: 280,
+        lastRelease: '2026-02-10',
+        devScore: 72,
+      },
+      {
+        symbol: 'LINK',
+        name: 'Chainlink',
+        weeklyCommits: 40,
+        activeDevs: 30,
+        stars: 5200,
+        openIssues: 95,
+        lastRelease: '2026-01-22',
+        devScore: 58,
+      },
+    ];
+
+    const response = { success: true, data: { projects } };
+    await redis.set(cacheKey, JSON.stringify(response), 'EX', 1800);
+    res.json(response);
+  } catch (err) {
+    logger.error('Dev activity error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// =====================================================================
+// GET /network-metrics/:symbol — Mock network health metrics
+// =====================================================================
+router.get('/network-metrics/:symbol', async (req: Request, res: Response) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+    const cacheKey = `market:network-metrics:${symbol}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+
+    const metricsMap: Record<string, {
+      dailyActiveAddresses: number;
+      txCount: number;
+      transferValueUsd: number;
+      nvtRatio: number;
+      metcalfeRatio: number;
+      newAddresses: number;
+      giniCoefficient: number;
+      healthScore: number;
+      interpretation: string;
+    }> = {
+      BTC: {
+        dailyActiveAddresses: 900000,
+        txCount: 350000,
+        transferValueUsd: 25000000000,
+        nvtRatio: 45,
+        metcalfeRatio: 1.12,
+        newAddresses: 450000,
+        giniCoefficient: 0.65,
+        healthScore: 88,
+        interpretation: 'Strong network activity. High transfer value with stable active addresses indicates healthy usage. NVT ratio suggests fair valuation relative to on-chain throughput.',
+      },
+      BTCUSDT: {
+        dailyActiveAddresses: 900000,
+        txCount: 350000,
+        transferValueUsd: 25000000000,
+        nvtRatio: 45,
+        metcalfeRatio: 1.12,
+        newAddresses: 450000,
+        giniCoefficient: 0.65,
+        healthScore: 88,
+        interpretation: 'Strong network activity. High transfer value with stable active addresses indicates healthy usage. NVT ratio suggests fair valuation relative to on-chain throughput.',
+      },
+      ETH: {
+        dailyActiveAddresses: 500000,
+        txCount: 1200000,
+        transferValueUsd: 8000000000,
+        nvtRatio: 38,
+        metcalfeRatio: 0.95,
+        newAddresses: 120000,
+        giniCoefficient: 0.72,
+        healthScore: 82,
+        interpretation: 'Very high transaction count driven by DeFi and NFT activity. NVT ratio is low, suggesting the network is heavily utilized relative to market cap. High Gini indicates whale concentration.',
+      },
+      ETHUSDT: {
+        dailyActiveAddresses: 500000,
+        txCount: 1200000,
+        transferValueUsd: 8000000000,
+        nvtRatio: 38,
+        metcalfeRatio: 0.95,
+        newAddresses: 120000,
+        giniCoefficient: 0.72,
+        healthScore: 82,
+        interpretation: 'Very high transaction count driven by DeFi and NFT activity. NVT ratio is low, suggesting the network is heavily utilized relative to market cap. High Gini indicates whale concentration.',
+      },
+      SOL: {
+        dailyActiveAddresses: 2000000,
+        txCount: 40000000,
+        transferValueUsd: 3000000000,
+        nvtRatio: 15,
+        metcalfeRatio: 1.85,
+        newAddresses: 800000,
+        giniCoefficient: 0.58,
+        healthScore: 75,
+        interpretation: 'Extremely high transaction throughput with many active addresses. Low NVT suggests heavy usage. High Metcalfe ratio may indicate overvaluation relative to network size. Strong new address growth.',
+      },
+      SOLUSDT: {
+        dailyActiveAddresses: 2000000,
+        txCount: 40000000,
+        transferValueUsd: 3000000000,
+        nvtRatio: 15,
+        metcalfeRatio: 1.85,
+        newAddresses: 800000,
+        giniCoefficient: 0.58,
+        healthScore: 75,
+        interpretation: 'Extremely high transaction throughput with many active addresses. Low NVT suggests heavy usage. High Metcalfe ratio may indicate overvaluation relative to network size. Strong new address growth.',
+      },
+    };
+
+    const metrics = metricsMap[symbol];
+    if (!metrics) {
+      res.status(404).json({ success: false, error: `No network metrics available for ${symbol}. Supported: BTC, ETH, SOL` });
+      return;
+    }
+
+    const { healthScore, interpretation, ...metricValues } = metrics;
+
+    const response = {
+      success: true,
+      data: {
+        symbol,
+        metrics: metricValues,
+        healthScore,
+        interpretation,
+      },
+    };
+
+    await redis.set(cacheKey, JSON.stringify(response), 'EX', 1800);
+    res.json(response);
+  } catch (err) {
+    logger.error('Network metrics error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// =====================================================================
+// GET /renko/:symbol — Simulated Renko chart from 1m candles
+// =====================================================================
+router.get('/renko/:symbol', async (req: Request, res: Response) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+    const cacheKey = `market:renko:${symbol}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+
+    // Find pair
+    const pairResult = await query(
+      `SELECT tp.id FROM trading_pairs tp
+       JOIN exchanges e ON e.id = tp.exchange_id
+       WHERE tp.symbol = $1 AND tp.is_active = true
+       LIMIT 1`,
+      [symbol]
+    );
+
+    if (pairResult.rows.length === 0) {
+      // Generate fallback renko data
+      const fallbackPrice = symbol.includes('BTC') ? 97500 : symbol.includes('ETH') ? 3450 : 100;
+      const brickSize = Math.round(fallbackPrice * 0.005);
+      const bricks: Array<{ price: number; type: 'up' | 'down'; index: number }> = [];
+      let price = fallbackPrice - brickSize * 10;
+      const directions = [1, 1, 1, -1, 1, 1, -1, -1, 1, 1, 1, 1, -1, 1, 1, -1, 1, 1, 1, -1];
+      for (let i = 0; i < directions.length; i++) {
+        price += directions[i] * brickSize;
+        bricks.push({ price, type: directions[i] === 1 ? 'up' : 'down', index: i });
+      }
+
+      const response = {
+        success: true,
+        data: { symbol, brickSize, bricks },
+      };
+      await redis.set(cacheKey, JSON.stringify(response), 'EX', 300);
+      res.json(response);
+      return;
+    }
+
+    const pairId = pairResult.rows[0].id;
+
+    // Fetch last 500 1m candles
+    const candlesResult = await query(
+      `SELECT o.high, o.low, o.close FROM ohlcv_1m o
+       WHERE o.pair_id = $1
+       ORDER BY o.time DESC
+       LIMIT 500`,
+      [pairId]
+    );
+
+    const candles = candlesResult.rows
+      .map((r: { high: string; low: string; close: string }) => ({
+        high: parseFloat(r.high),
+        low: parseFloat(r.low),
+        close: parseFloat(r.close),
+      }))
+      .reverse();
+
+    if (candles.length < 20) {
+      res.status(404).json({ success: false, error: 'Insufficient data for Renko chart' });
+      return;
+    }
+
+    // Calculate ATR(20)
+    let atrSum = 0;
+    for (let i = 0; i < Math.min(20, candles.length); i++) {
+      atrSum += candles[i].high - candles[i].low;
+    }
+    const atr = atrSum / Math.min(20, candles.length);
+    const brickSize = Math.round((atr / 2) * 100) / 100;
+
+    if (brickSize <= 0) {
+      res.status(400).json({ success: false, error: 'Invalid brick size computed' });
+      return;
+    }
+
+    // Build Renko bricks
+    const bricks: Array<{ price: number; type: 'up' | 'down'; index: number }> = [];
+    let lastBrickTop = candles[0].close;
+    let lastBrickBottom = candles[0].close - brickSize;
+    let idx = 0;
+
+    for (const candle of candles) {
+      // Check for up bricks
+      while (candle.close >= lastBrickTop + brickSize) {
+        lastBrickBottom = lastBrickTop;
+        lastBrickTop = lastBrickTop + brickSize;
+        bricks.push({ price: Math.round(lastBrickTop * 100) / 100, type: 'up', index: idx++ });
+      }
+      // Check for down bricks
+      while (candle.close <= lastBrickBottom - brickSize) {
+        lastBrickTop = lastBrickBottom;
+        lastBrickBottom = lastBrickBottom - brickSize;
+        bricks.push({ price: Math.round(lastBrickBottom * 100) / 100, type: 'down', index: idx++ });
+      }
+    }
+
+    const response = {
+      success: true,
+      data: {
+        symbol,
+        brickSize: Math.round(brickSize * 100) / 100,
+        bricks: bricks.slice(-100), // Last 100 bricks
+      },
+    };
+
+    await redis.set(cacheKey, JSON.stringify(response), 'EX', 300);
+    res.json(response);
+  } catch (err) {
+    logger.error('Renko error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// =====================================================================
+// GET /btc-models — Bitcoin valuation models
+// =====================================================================
+router.get('/btc-models', async (_req: Request, res: Response) => {
+  try {
+    const cacheKey = 'market:btc-models';
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+
+    // Get current BTC price
+    let currentPrice = 97500;
+    const btcData = await redis.get('ticker:binance:BTCUSDT');
+    if (btcData) {
+      const parsed = JSON.parse(btcData);
+      currentPrice = parsed.price ?? currentPrice;
+    }
+
+    // Bitcoin genesis: Jan 3, 2009
+    const genesisDate = new Date('2009-01-03');
+    const daysSinceGenesis = Math.floor((Date.now() - genesisDate.getTime()) / 86400000);
+
+    // Stock-to-Flow model
+    // Post-2024-halving: S2F ~120. Fair value = e^(3.21 * ln(S2F) - 1.6)
+    const s2fRatio = 120;
+    const s2fFairValue = Math.round(Math.exp(3.21 * Math.log(s2fRatio) - 1.6));
+    const s2fDeviation = Math.round(((currentPrice - s2fFairValue) / s2fFairValue) * 10000) / 100;
+
+    // Rainbow Chart (log regression)
+    // log10(price) = a * log10(days) + b where a~2.66, b~-17.01
+    const logFairValue = 2.66 * Math.log10(daysSinceGenesis) - 17.01;
+    const rainbowFairValue = Math.round(Math.pow(10, logFairValue));
+    const rainbowDeviation = Math.round(((currentPrice - rainbowFairValue) / rainbowFairValue) * 10000) / 100;
+    // Bands: "Fire Sale", "Accumulate", "Still Cheap", "Fair Value", "FOMO", "Bubble"
+    const priceRatio = currentPrice / rainbowFairValue;
+    let rainbowBand = 'Fair Value';
+    if (priceRatio < 0.5) rainbowBand = 'Fire Sale';
+    else if (priceRatio < 0.8) rainbowBand = 'Accumulate';
+    else if (priceRatio < 1.0) rainbowBand = 'Still Cheap';
+    else if (priceRatio < 1.5) rainbowBand = 'Fair Value';
+    else if (priceRatio < 2.5) rainbowBand = 'FOMO';
+    else rainbowBand = 'Bubble';
+
+    // Pi Cycle Top Indicator
+    // 350DMA * 2 vs 111DMA. When 111DMA crosses above 350DMA*2, signals a top
+    // Simulate: use current price proximity
+    const simulated350DMA = currentPrice * 0.85;
+    const simulated111DMA = currentPrice * 0.95;
+    const piCycleThreshold = simulated350DMA * 2;
+    const piCycleCrossed = simulated111DMA >= piCycleThreshold;
+    const piCycleDistance = Math.round(((piCycleThreshold - simulated111DMA) / piCycleThreshold) * 10000) / 100;
+
+    // MVRV Z-Score
+    // Z = (Market Cap - Realized Cap) / Std Dev of Market Cap
+    // Simulated: realized price ≈ 35k (typical holder cost basis)
+    const realizedPrice = 35000;
+    const mvrvRatio = currentPrice / realizedPrice;
+    const zScore = Math.round((mvrvRatio - 1) * 100) / 100;
+    const mvrvSignal = zScore > 7 ? 'overvalued' : zScore > 3 ? 'fair' : 'undervalued';
+
+    // Power Law model
+    // log10(price) = 5.71 * log10(days) - 38.24 (simplified)
+    const powerLawLog = 5.71 * Math.log10(daysSinceGenesis) - 38.24;
+    const powerLawFairValue = Math.round(Math.pow(10, powerLawLog));
+    const powerLawDeviation = Math.round(((currentPrice - powerLawFairValue) / powerLawFairValue) * 10000) / 100;
+
+    const models = [
+      {
+        name: 'Stock-to-Flow',
+        fairValue: s2fFairValue,
+        deviation: s2fDeviation,
+        signal: (s2fDeviation < -20 ? 'undervalued' : s2fDeviation > 20 ? 'overvalued' : 'fair') as 'undervalued' | 'fair' | 'overvalued',
+        description: `S2F ratio of ${s2fRatio} post-halving. Model predicts $${s2fFairValue.toLocaleString()} fair value.`,
+      },
+      {
+        name: 'Rainbow Chart',
+        fairValue: rainbowFairValue,
+        deviation: rainbowDeviation,
+        signal: (rainbowDeviation < -20 ? 'undervalued' : rainbowDeviation > 50 ? 'overvalued' : 'fair') as 'undervalued' | 'fair' | 'overvalued',
+        description: `Log regression band: "${rainbowBand}". Fair value at $${rainbowFairValue.toLocaleString()}.`,
+      },
+      {
+        name: 'Pi Cycle Top',
+        fairValue: Math.round(piCycleThreshold),
+        deviation: -piCycleDistance,
+        signal: (piCycleCrossed ? 'overvalued' : 'undervalued') as 'undervalued' | 'fair' | 'overvalued',
+        description: piCycleCrossed
+          ? 'WARNING: 111DMA has crossed above 350DMA x 2. Historical top signal triggered.'
+          : `111DMA is ${piCycleDistance}% below the 350DMA x 2 threshold. No top signal.`,
+      },
+      {
+        name: 'MVRV Z-Score',
+        fairValue: realizedPrice,
+        deviation: Math.round((mvrvRatio - 1) * 100),
+        signal: mvrvSignal as 'undervalued' | 'fair' | 'overvalued',
+        description: `MVRV ratio: ${mvrvRatio.toFixed(2)}x. Z-Score: ${zScore}. ${zScore > 7 ? 'Extremely overheated.' : zScore > 3 ? 'Elevated but not extreme.' : 'Healthy range.'}`,
+      },
+      {
+        name: 'Power Law',
+        fairValue: powerLawFairValue,
+        deviation: powerLawDeviation,
+        signal: (powerLawDeviation < -30 ? 'undervalued' : powerLawDeviation > 50 ? 'overvalued' : 'fair') as 'undervalued' | 'fair' | 'overvalued',
+        description: `Power law corridor model. Fair value: $${powerLawFairValue.toLocaleString()}.`,
+      },
+    ];
+
+    // Overall signal: majority vote
+    const signals = models.map((m) => m.signal);
+    const underCount = signals.filter((s) => s === 'undervalued').length;
+    const overCount = signals.filter((s) => s === 'overvalued').length;
+    let overallSignal: 'undervalued' | 'fair' | 'overvalued' = 'fair';
+    if (underCount >= 3) overallSignal = 'undervalued';
+    else if (overCount >= 3) overallSignal = 'overvalued';
+
+    const response = {
+      success: true,
+      data: {
+        currentPrice,
+        models,
+        overallSignal,
+      },
+    };
+
+    await redis.set(cacheKey, JSON.stringify(response), 'EX', 1800);
+    res.json(response);
+  } catch (err) {
+    logger.error('BTC models error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 export default router;
