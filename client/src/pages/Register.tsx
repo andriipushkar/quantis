@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
@@ -8,6 +8,8 @@ import { Card, CardContent } from '@/components/common/Card';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { useAuthStore } from '@/stores/auth';
+
+const OnboardingWizard = lazy(() => import('@/components/common/OnboardingWizard'));
 
 const registerSchema = z
   .object({
@@ -26,6 +28,7 @@ const Register: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { register: registerUser, isLoading, error, clearError } = useAuthStore();
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   const {
     register,
@@ -39,11 +42,25 @@ const Register: React.FC = () => {
     try {
       clearError();
       await registerUser(data.email, data.password);
-      navigate('/dashboard');
+      // Show onboarding wizard if user hasn't been onboarded
+      const onboarded = localStorage.getItem('quantis-onboarded');
+      if (!onboarded) {
+        setShowOnboarding(true);
+      } else {
+        navigate('/dashboard');
+      }
     } catch {
       // Error is handled by the store
     }
   };
+
+  if (showOnboarding) {
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-background" />}>
+        <OnboardingWizard onComplete={() => setShowOnboarding(false)} />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">

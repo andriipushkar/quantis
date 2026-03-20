@@ -24,7 +24,9 @@
     "fundingRates": "Funding Rates",
     "narratives": "Narratives",
     "marketBreadth": "Market Breadth",
-    "openInterest": "Open Interest"
+    "openInterest": "Open Interest",
+    "profile": "Profile",
+    "chartReplay": "Chart Replay"
   },
   "auth": {
     "login": "Log In",
@@ -133,5 +135,53 @@
     "showing": "Showing",
     "of": "of",
     "results": "results"
+  },
+  "onboarding": {
+    "experienceTitle": "What's your trading experience?",
+    "experienceSubtitle": "We'll customize your dashboard based on your level",
+    "beginner": "Beginner",
+    "beginnerDesc": "Simplified dashboard with guided tooltips",
+    "intermediate": "Intermediate",
+    "intermediateDesc": "Standard layout with all key features",
+    "advanced": "Advanced",
+    "advancedDesc": "Full density with pro-level tools",
+    "interestsTitle": "Pick assets for your watchlist",
+    "interestsSubtitle": "Select the coins you want to track",
+    "selectedCount": "{{count}} selected",
+    "themeTitle": "Pick your preferred look",
+    "themeSubtitle": "You can always change this later in Settings",
+    "darkTheme": "Dark Mode",
+    "lightTheme": "Light Mode",
+    "getStarted": "Get Started"
+  },
+  "profile": {
+    "title": "Profile",
+    "xpProgress": "XP Progress",
+    "toNextLevel": "to next level",
+    "totalXP": "Total XP",
+    "currentLevel": "Current Level",
+    "achievementsEarned": "Achievements",
+    "streakDays": "Streak Days",
+    "dayStreak": "day streak",
+    "achievements": "Achievements",
+    "recentActivity": "Recent Activity",
+    "noActivity": "No activity yet. Start exploring to earn XP!"
+  },
+  "chartReplay": {
+    "title": "Chart Replay",
+    "bar": "Bar",
+    "buy": "Buy",
+    "sell": "Sell",
+    "closePosition": "Close",
+    "openPosition": "Open Position",
+    "direction": "Direction",
+    "entryPrice": "Entry Price",
+    "currentPrice": "Current Price",
+    "unrealizedPnl": "Unrealized P&L",
+    "noOpenPosition": "No open position. Use Buy or Sell to enter a trade.",
+    "sessionSummary": "Session Summary",
+    "totalTrades": "Total Trades",
+    "winRate": "Win Rate",
+    "totalPnl": "Total P&L"
   }
 }

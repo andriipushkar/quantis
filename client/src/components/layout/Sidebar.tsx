@@ -30,6 +30,8 @@ import {
   Layers,
   Activity,
   BarChart3,
+  User,
+  Rewind,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -97,6 +99,8 @@ const navItems: NavItem[] = [
   { icon: Bell, labelKey: 'nav.alerts', path: '/alerts' },
   { icon: BookOpen, labelKey: 'nav.journal', path: '/journal' },
   { icon: Wallet, labelKey: 'nav.portfolio', path: '/portfolio' },
+  { icon: User, labelKey: 'nav.profile', path: '/profile' },
+  { icon: Rewind, labelKey: 'nav.chartReplay', path: '/chart-replay' },
   { icon: SettingsIcon, labelKey: 'nav.settings', path: '/settings' },
 ];
 

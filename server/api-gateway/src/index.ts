@@ -25,6 +25,7 @@ import journalRoutes from './routes/journal.js';
 import tokenScannerRoutes from './routes/token-scanner.js';
 import dcaRoutes from './routes/dca.js';
 import exchangeHealthRoutes from './routes/exchange-health.js';
+import gamificationRoutes from './routes/gamification.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import Redis from 'ioredis';
 
@@ -66,6 +67,7 @@ app.use('/api/v1/journal', journalRoutes);
 app.use('/api/v1/scanner', tokenScannerRoutes);
 app.use('/api/v1/dca', dcaRoutes);
 app.use('/api/v1/exchanges', exchangeHealthRoutes);
+app.use('/api/v1/gamification', gamificationRoutes);
 
 // Health check
 app.get('/health', (_req, res) => {

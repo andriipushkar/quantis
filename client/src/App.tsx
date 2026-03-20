@@ -35,6 +35,8 @@ const FundingRates = lazy(() => import('@/pages/FundingRates'));
 const Narratives = lazy(() => import('@/pages/Narratives'));
 const MarketBreadth = lazy(() => import('@/pages/MarketBreadth'));
 const OpenInterest = lazy(() => import('@/pages/OpenInterest'));
+const Profile = lazy(() => import('@/pages/Profile'));
+const ChartReplay = lazy(() => import('@/pages/ChartReplay'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
 const PageLoader: React.FC = () => (
@@ -104,6 +106,8 @@ const App: React.FC = () => {
             <Route path="/narratives" element={<Narratives />} />
             <Route path="/market-breadth" element={<MarketBreadth />} />
             <Route path="/open-interest" element={<OpenInterest />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/chart-replay" element={<ChartReplay />} />
           </Route>
 
           {/* Catch-all 404 */}
