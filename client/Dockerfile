@@ -1,15 +1,17 @@
-FROM node:20-alpine AS base
+# Build stage
+FROM node:20-alpine AS builder
 WORKDIR /app
+COPY package.json package-lock.json* ./
+COPY client/package.json client/
+COPY shared/package.json shared/
+RUN npm install -w client -w shared
+COPY shared/ shared/
+COPY client/ client/
+WORKDIR /app/client
+RUN npx vite build
 
-# Install dependencies
-COPY package.json ./
-RUN npm install
-
-# Copy source
-COPY . .
-
-# Expose dev port
-EXPOSE 5173
-
-# Run dev server
-CMD ["npx", "vite", "--host", "0.0.0.0", "--port", "5173"]
+# Production stage
+FROM nginx:alpine
+COPY --from=builder /app/client/dist /usr/share/nginx/html
+COPY docker/nginx/client.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
