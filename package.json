@@ -23,7 +23,8 @@
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "docker:build": "docker compose build",
-    "test": "npm -w server/api-gateway run test && npm -w server/analysis-engine run test"
+    "test": "npm -w server/api-gateway run test && npm -w server/analysis-engine run test",
+    "test:e2e": "npx playwright test"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

@@ -50,6 +50,7 @@ const TaxReport = lazy(() => import('@/pages/TaxReport'));
 const Admin = lazy(() => import('@/pages/Admin'));
 const Options = lazy(() => import('@/pages/Options'));
 const IndicatorLibrary = lazy(() => import('@/pages/IndicatorLibrary'));
+const ScriptEditor = lazy(() => import('@/pages/ScriptEditor'));
 const Status = lazy(() => import('@/pages/Status'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
@@ -156,6 +157,7 @@ const App: React.FC = () => {
             <Route path="/tax-report" element={<TaxReport />} />
             <Route path="/options" element={<Options />} />
             <Route path="/indicators" element={<IndicatorLibrary />} />
+            <Route path="/script-editor" element={<ScriptEditor />} />
             <Route path="/admin" element={<Admin />} />
           </Route>
 

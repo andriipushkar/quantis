@@ -42,6 +42,7 @@ import {
   FileText,
   BarChart2,
   BookMarked,
+  Code,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -100,6 +101,7 @@ const navItems: NavItem[] = [
   { icon: BarChart3, labelKey: 'nav.openInterest', path: '/open-interest' },
   { icon: BarChart2, labelKey: 'nav.options', path: '/options' },
   { icon: BookMarked, labelKey: 'nav.indicatorLibrary', path: '/indicators' },
+  { icon: Code, labelKey: 'nav.scriptEditor', path: '/script-editor' },
   { icon: Bot, labelKey: 'nav.copilot', path: '/copilot' },
   { icon: Signal, labelKey: 'nav.signals', path: '/signals', badge: true },
   { icon: CircleDollarSign, labelKey: 'nav.paperTrading', path: '/paper-trading' },
