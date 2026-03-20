@@ -32,6 +32,7 @@ import adminRoutes from './routes/admin.js';
 import telegramRoutes from './routes/telegram.js';
 import marketplaceRoutes from './routes/marketplace.js';
 import walletTrackerRoutes from './routes/wallet-tracker.js';
+import taxRoutes from './routes/tax.js';
 import emailRoutes from './routes/emails.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import Redis from 'ioredis';
@@ -81,6 +82,7 @@ app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/telegram', telegramRoutes);
 app.use('/api/v1/marketplace', marketplaceRoutes);
 app.use('/api/v1/wallets', walletTrackerRoutes);
+app.use('/api/v1/tax', taxRoutes);
 app.use('/api/v1/emails', emailRoutes);
 
 // Health check

@@ -34,7 +34,8 @@
     "patternScanner": "Pattern Scanner",
     "antiLiquidation": "Anti-Liquidation",
     "marketplace": "Marketplace",
-    "walletTracker": "Wallet Tracker"
+    "walletTracker": "Wallet Tracker",
+    "taxReport": "Tax Report"
   },
   "auth": {
     "login": "Log In",
