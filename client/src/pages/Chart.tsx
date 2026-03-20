@@ -6,6 +6,7 @@ import { RSIChart } from '@/components/charts/RSIChart';
 import { useMarketStore, TIMEFRAMES } from '@/stores/market';
 import { getOHLCV, getTickers, getPairs, type TradingPair } from '@/services/api';
 import { Activity, ChevronDown, BarChart3 } from 'lucide-react';
+import { DrawingToolbar } from '@/components/charts/DrawingToolbar';
 
 interface Indicators {
   price: number | null;
@@ -271,23 +272,30 @@ const Chart: React.FC = () => {
         </div>
       </div>
 
-      {/* Chart */}
-      <div className="flex-1 h-[calc(100%-4rem)] bg-card border border-border rounded-xl overflow-hidden relative">
-        {loading && candles.length === 0 ? (
-          <div className="flex items-center justify-center h-full">
-            <Activity className="w-6 h-6 text-primary animate-pulse" />
-          </div>
-        ) : (
-          <TradingChart
-            ref={chartRef}
-            symbol={currentSymbol}
-            timeframe={selectedTimeframe}
-            data={candles}
-            showEMA={showEMA}
-            showBB={showBB}
-            className="w-full h-full"
-          />
-        )}
+      {/* Chart + Drawing Toolbar */}
+      <div className="flex-1 h-[calc(100%-4rem)] flex gap-2">
+        {/* Drawing toolbar - visible on lg+ */}
+        <div className="hidden lg:flex flex-shrink-0">
+          <DrawingToolbar />
+        </div>
+
+        <div className="flex-1 bg-card border border-border rounded-xl overflow-hidden relative">
+          {loading && candles.length === 0 ? (
+            <div className="flex items-center justify-center h-full">
+              <Activity className="w-6 h-6 text-primary animate-pulse" />
+            </div>
+          ) : (
+            <TradingChart
+              ref={chartRef}
+              symbol={currentSymbol}
+              timeframe={selectedTimeframe}
+              data={candles}
+              showEMA={showEMA}
+              showBB={showBB}
+              className="w-full h-full"
+            />
+          )}
+        </div>
       </div>
 
       {/* RSI Sub-Chart */}

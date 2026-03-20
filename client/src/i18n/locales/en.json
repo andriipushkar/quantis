@@ -35,7 +35,9 @@
     "antiLiquidation": "Anti-Liquidation",
     "marketplace": "Marketplace",
     "walletTracker": "Wallet Tracker",
-    "taxReport": "Tax Report"
+    "taxReport": "Tax Report",
+    "options": "Options",
+    "status": "Status"
   },
   "auth": {
     "login": "Log In",

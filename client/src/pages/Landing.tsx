@@ -320,6 +320,7 @@ const Landing: React.FC = () => {
             <button className="hover:text-foreground transition-colors">Terms</button>
             <button className="hover:text-foreground transition-colors">Privacy</button>
             <button className="hover:text-foreground transition-colors">Contact</button>
+            <button className="hover:text-foreground transition-colors" onClick={() => navigate('/status')}>Status</button>
           </div>
         </div>
       </footer>

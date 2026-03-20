@@ -47,6 +47,8 @@ const Marketplace = lazy(() => import('@/pages/Marketplace'));
 const WalletTracker = lazy(() => import('@/pages/WalletTracker'));
 const TaxReport = lazy(() => import('@/pages/TaxReport'));
 const Admin = lazy(() => import('@/pages/Admin'));
+const Options = lazy(() => import('@/pages/Options'));
+const Status = lazy(() => import('@/pages/Status'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
 const PageLoader: React.FC = () => (
@@ -87,6 +89,7 @@ const App: React.FC = () => {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/pricing" element={<Pricing />} />
+          <Route path="/status" element={<Status />} />
 
           {/* App routes wrapped in Layout */}
           <Route element={<Layout />}>
@@ -127,6 +130,7 @@ const App: React.FC = () => {
             <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/wallet-tracker" element={<WalletTracker />} />
             <Route path="/tax-report" element={<TaxReport />} />
+            <Route path="/options" element={<Options />} />
             <Route path="/admin" element={<Admin />} />
           </Route>
 
