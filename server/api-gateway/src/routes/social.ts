@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
 import logger from '../config/logger.js';
+import { validateBody, socialPostSchema } from '../validators/index.js';
 
 const router = Router();
 
@@ -192,29 +193,9 @@ router.get('/feed', (_req: AuthenticatedRequest, res: Response) => {
 });
 
 // POST /post — Create post (auth required)
-router.post('/post', authenticate, (req: AuthenticatedRequest, res: Response) => {
+router.post('/post', authenticate, validateBody(socialPostSchema), (req: AuthenticatedRequest, res: Response) => {
   try {
     const { type, content, symbol, direction } = req.body;
-
-    if (!type || !['trade_idea', 'analysis', 'comment'].includes(type)) {
-      res.status(400).json({ success: false, error: 'Invalid post type' });
-      return;
-    }
-
-    if (!content || typeof content !== 'string' || content.trim().length === 0) {
-      res.status(400).json({ success: false, error: 'Content is required' });
-      return;
-    }
-
-    if (content.length > 2000) {
-      res.status(400).json({ success: false, error: 'Content exceeds 2000 character limit' });
-      return;
-    }
-
-    if (direction && !['bullish', 'bearish', 'neutral'].includes(direction)) {
-      res.status(400).json({ success: false, error: 'Invalid direction' });
-      return;
-    }
 
     const post: SocialPost = {
       id: `sp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,

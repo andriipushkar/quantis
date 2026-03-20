@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import redis from '../config/redis.js';
 import logger from '../config/logger.js';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
+import { validateBody, orderSchema } from '../validators/index.js';
 
 const router = Router();
 
@@ -100,25 +101,9 @@ router.get('/account', authenticate, async (req: AuthenticatedRequest, res: Resp
 });
 
 // POST /order — Place a paper trade order
-router.post('/order', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/order', authenticate, validateBody(orderSchema), async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { symbol: rawSymbol, side, quantity: amount } = req.body;
-
-    if (!rawSymbol || !side || !amount) {
-      res.status(400).json({ success: false, error: 'symbol, side, and quantity (USD amount) are required' });
-      return;
-    }
-
-    if (side !== 'buy' && side !== 'sell') {
-      res.status(400).json({ success: false, error: 'side must be "buy" or "sell"' });
-      return;
-    }
-
-    const usdAmount = parseFloat(amount);
-    if (isNaN(usdAmount) || usdAmount <= 0) {
-      res.status(400).json({ success: false, error: 'quantity must be a positive number' });
-      return;
-    }
+    const { symbol: rawSymbol, side, quantity: usdAmount } = req.body;
 
     const symbol = rawSymbol.toUpperCase();
     const currentPrice = await getTickerPrice(symbol);

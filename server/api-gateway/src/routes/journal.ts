@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import logger from '../config/logger.js';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
+import { validateBody, journalEntrySchema } from '../validators/index.js';
 
 const router = Router();
 
@@ -146,42 +147,18 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
 });
 
 // POST / — Add journal entry
-router.post('/', async (req: AuthenticatedRequest, res: Response) => {
+router.post('/', validateBody(journalEntrySchema), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { pair, direction, entryPrice, exitPrice, size, strategy, emotional_state, notes, confidence, timeframe } = req.body;
 
-    if (!pair || !direction || entryPrice === undefined || !size) {
-      res.status(400).json({ success: false, error: 'pair, direction, entryPrice, and size are required' });
-      return;
-    }
-
-    if (!VALID_DIRECTIONS.includes(direction)) {
-      res.status(400).json({ success: false, error: 'direction must be "long" or "short"' });
-      return;
-    }
-
-    const parsedEntry = parseFloat(entryPrice);
-    const parsedSize = parseFloat(size);
-    if (isNaN(parsedEntry) || parsedEntry <= 0 || isNaN(parsedSize) || parsedSize <= 0) {
-      res.status(400).json({ success: false, error: 'entryPrice and size must be positive numbers' });
-      return;
-    }
-
-    if (emotional_state && !VALID_EMOTIONS.includes(emotional_state)) {
-      res.status(400).json({ success: false, error: `emotional_state must be one of: ${VALID_EMOTIONS.join(', ')}` });
-      return;
-    }
-
-    if (confidence !== undefined && (confidence < 1 || confidence > 5)) {
-      res.status(400).json({ success: false, error: 'confidence must be between 1 and 5' });
-      return;
-    }
+    const parsedEntry = entryPrice;
+    const parsedSize = size;
+    const parsedExit = exitPrice ?? null;
 
     let pnl: number | null = null;
     let pnlPct: number | null = null;
-    const parsedExit = exitPrice !== undefined && exitPrice !== null ? parseFloat(exitPrice) : null;
 
-    if (parsedExit !== null && !isNaN(parsedExit) && parsedExit > 0) {
+    if (parsedExit !== null && parsedExit > 0) {
       const calc = calculatePnL({ direction, entryPrice: parsedEntry, exitPrice: parsedExit, size: parsedSize });
       pnl = calc.pnl;
       pnlPct = calc.pnlPct;

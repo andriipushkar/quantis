@@ -169,8 +169,9 @@ export const TradingChart = forwardRef<TradingChartRef, TradingChartProps>(
           timeVisible: true,
           secondsVisible: false,
         },
-        width: containerRef.current.clientWidth,
-        height: containerRef.current.clientHeight,
+        width: containerRef.current.clientWidth || 800,
+        height: containerRef.current.clientHeight || 400,
+        autoSize: true,
       });
 
       chartRef.current = chart;

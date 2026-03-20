@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { query } from '../config/database.js';
 import logger from '../config/logger.js';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
+import { validateBody, alertCreateSchema } from '../validators/index.js';
 
 const router = Router();
 
@@ -41,15 +42,9 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
 });
 
 // POST / - create alert
-router.post('/', async (req: AuthenticatedRequest, res: Response) => {
+router.post('/', validateBody(alertCreateSchema), async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const validation = createAlertSchema.safeParse(req.body);
-    if (!validation.success) {
-      res.status(400).json({ error: 'Validation failed', details: validation.error.issues });
-      return;
-    }
-
-    const { name, conditions, channels } = validation.data;
+    const { name, conditions, channels } = req.body;
 
     const result = await query(
       `INSERT INTO alerts (user_id, name, conditions, channels)

@@ -3,6 +3,7 @@ import { query } from '../config/database.js';
 import redis from '../config/redis.js';
 import logger from '../config/logger.js';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
+import { validateBody, copilotSchema } from '../validators/index.js';
 
 const router = Router();
 
@@ -64,7 +65,7 @@ function computeEMA(closes: number[], period: number): number | null {
 }
 
 // POST /ask — AI analysis endpoint
-router.post('/ask', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/ask', authenticate, validateBody(copilotSchema), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
 
@@ -76,10 +77,6 @@ router.post('/ask', authenticate, async (req: AuthenticatedRequest, res: Respons
     }
 
     const { question, symbol: rawSymbol } = req.body;
-    if (!question || typeof question !== 'string' || question.trim().length === 0) {
-      res.status(400).json({ success: false, error: 'Question is required' });
-      return;
-    }
 
     const symbol = (rawSymbol || 'BTCUSDT').toUpperCase();
 

@@ -38,6 +38,7 @@ import influencerRoutes from './routes/influencers.js';
 import tokenomicsRoutes from './routes/tokenomics.js';
 import docsRoutes from './routes/docs.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
+import { sanitizeResponse, validateContentType, preventParamPollution } from './middleware/security.js';
 import Redis from 'ioredis';
 
 const app = express();
@@ -55,6 +56,9 @@ const corsOptions: cors.CorsOptions = {
 
 // Middleware
 app.use(helmet());
+app.use(sanitizeResponse);
+app.use(validateContentType);
+app.use(preventParamPollution);
 
 // Additional security headers
 app.use((_req, res, next) => {

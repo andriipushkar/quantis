@@ -273,13 +273,13 @@ const Chart: React.FC = () => {
       </div>
 
       {/* Chart + Drawing Toolbar */}
-      <div className="flex-1 h-[calc(100%-4rem)] flex gap-2">
+      <div className="flex-1 min-h-[400px] h-[calc(100vh-14rem)] flex gap-2">
         {/* Drawing toolbar - visible on lg+ */}
         <div className="hidden lg:flex flex-shrink-0">
           <DrawingToolbar />
         </div>
 
-        <div className="flex-1 bg-card border border-border rounded-xl overflow-hidden relative">
+        <div className="flex-1 bg-card border border-border rounded-xl overflow-hidden relative min-h-[400px]">
           {loading && candles.length === 0 ? (
             <div className="flex items-center justify-center h-full">
               <Activity className="w-6 h-6 text-primary animate-pulse" />

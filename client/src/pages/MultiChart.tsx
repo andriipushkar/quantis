@@ -23,7 +23,7 @@ interface ChartPanelProps {
   pairs: TradingPair[];
 }
 
-const ChartPanel: React.FC<ChartPanelProps> = ({ defaultPair, defaultTimeframe, pairs }) => {
+const ChartPanel: React.FC<ChartPanelProps> = React.memo(({ defaultPair, defaultTimeframe, pairs }) => {
   const [pair, setPair] = useState(defaultPair);
   const [timeframe, setTimeframe] = useState(defaultTimeframe);
   const [candles, setCandles] = useState<OHLCVData[]>([]);
@@ -109,7 +109,9 @@ const ChartPanel: React.FC<ChartPanelProps> = ({ defaultPair, defaultTimeframe, 
       </div>
     </div>
   );
-};
+});
+
+ChartPanel.displayName = 'ChartPanel';
 
 /* ── MultiChart Page ───────────────────────────────────────────── */
 
@@ -137,8 +139,8 @@ const MultiChart: React.FC = () => {
 
       {/* 2x2 Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4" style={{ height: 'calc(100vh - 180px)' }}>
-        {DEFAULT_PANELS.map((panel, idx) => (
-          <div key={idx} className="min-h-[300px]">
+        {DEFAULT_PANELS.map((panel) => (
+          <div key={`${panel.pair}-${panel.timeframe}`} className="min-h-[300px]">
             <ChartPanel
               defaultPair={panel.pair}
               defaultTimeframe={panel.timeframe}

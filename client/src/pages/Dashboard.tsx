@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TrendingUp, TrendingDown, BarChart3, Activity, Gauge, Star, Crosshair } from 'lucide-react';
 import { getTickers, getOHLCV, getFearGreed, getMarketRegime, type TickerData, type FearGreedData, type MarketRegimeData } from '@/services/api';
@@ -27,7 +27,7 @@ function stripQuote(symbol: string): string {
 // Fear & Greed Gauge (canvas arc)
 // ---------------------------------------------------------------------------
 
-const FearGreedGauge: React.FC = () => {
+const FearGreedGauge: React.FC = React.memo(() => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [data, setData] = useState<FearGreedData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -159,13 +159,15 @@ const FearGreedGauge: React.FC = () => {
       </div>
     </div>
   );
-};
+});
+
+FearGreedGauge.displayName = 'FearGreedGauge';
 
 // ---------------------------------------------------------------------------
 // BTC Mini Chart (canvas line chart)
 // ---------------------------------------------------------------------------
 
-const BtcMiniChart: React.FC = () => {
+const BtcMiniChart: React.FC = React.memo(() => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -271,7 +273,9 @@ const BtcMiniChart: React.FC = () => {
       />
     </div>
   );
-};
+});
+
+BtcMiniChart.displayName = 'BtcMiniChart';
 
 // ---------------------------------------------------------------------------
 // Market Regime Widget
@@ -292,7 +296,7 @@ function formatRegimeLabel(regime: string): string {
   return regime.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
-const MarketRegimeWidget: React.FC = () => {
+const MarketRegimeWidget: React.FC = React.memo(() => {
   const [data, setData] = useState<MarketRegimeData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -384,7 +388,72 @@ const MarketRegimeWidget: React.FC = () => {
       </div>
     </div>
   );
-};
+});
+
+MarketRegimeWidget.displayName = 'MarketRegimeWidget';
+
+// ---------------------------------------------------------------------------
+// Watchlist Item (memoised to skip re-renders when ticker data hasn't changed)
+// ---------------------------------------------------------------------------
+
+interface WatchlistItemProps {
+  ticker: TickerData;
+  isStarred: boolean;
+  isAuthenticated: boolean;
+  onToggle: (symbol: string) => void;
+  onNavigate: (symbol: string) => void;
+}
+
+const WatchlistItem: React.FC<WatchlistItemProps> = React.memo(
+  ({ ticker, isStarred, isAuthenticated, onToggle, onNavigate }) => {
+    const isPositive = ticker.change24h >= 0;
+    return (
+      <div
+        className={cn(
+          'flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all',
+          'bg-card border-border hover:border-primary/50 hover:shadow-sm',
+          'select-none shrink-0'
+        )}
+      >
+        {isAuthenticated && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggle(ticker.symbol); }}
+            className="flex-shrink-0 transition-colors hover:scale-110"
+            title={isStarred ? 'Remove from watchlist' : 'Add to watchlist'}
+          >
+            <Star
+              className={cn(
+                'w-4 h-4',
+                isStarred ? 'text-primary fill-primary' : 'text-muted-foreground'
+              )}
+            />
+          </button>
+        )}
+        <button
+          onClick={() => onNavigate(ticker.symbol)}
+          className="flex items-center gap-3 cursor-pointer"
+        >
+          <span className="text-sm font-semibold text-foreground">
+            {stripQuote(ticker.symbol)}
+          </span>
+          <span className="text-sm font-mono text-foreground">
+            {formatPrice(ticker.price)}
+          </span>
+          <span
+            className={cn(
+              'text-xs font-mono font-medium',
+              isPositive ? 'text-success' : 'text-danger'
+            )}
+          >
+            {formatChange(ticker.change24h)}
+          </span>
+        </button>
+      </div>
+    );
+  },
+);
+
+WatchlistItem.displayName = 'WatchlistItem';
 
 // ---------------------------------------------------------------------------
 // Dashboard
@@ -467,22 +536,32 @@ const Dashboard: React.FC = () => {
     fetchUserWatchlist();
   }, [fetchUserWatchlist]);
 
-  // Derived data
-  const tickerList: TickerData[] = Array.from(tickers.values());
-  const sorted = [...tickerList].sort((a, b) => b.volume - a.volume);
+  // Derived data — memoised to avoid recalculation on every render
+  const tickerList: TickerData[] = useMemo(() => Array.from(tickers.values()), [tickers]);
+
+  const sorted = useMemo(
+    () => [...tickerList].sort((a, b) => b.volume - a.volume),
+    [tickerList],
+  );
 
   // Show user watchlist pairs first, then remaining by volume
-  const watchlist = (() => {
+  const watchlist = useMemo(() => {
     const top = sorted.slice(0, 10);
     if (!isAuthenticated || userWatchlist.size === 0) return top;
     const inWl = top.filter((t) => userWatchlist.has(t.symbol));
     const notInWl = top.filter((t) => !userWatchlist.has(t.symbol));
     return [...inWl, ...notInWl];
-  })();
+  }, [sorted, isAuthenticated, userWatchlist]);
 
-  const sortedByChange = [...tickerList].sort((a, b) => b.change24h - a.change24h);
-  const topGainers = sortedByChange.slice(0, 5);
-  const topLosers = [...tickerList].sort((a, b) => a.change24h - b.change24h).slice(0, 5);
+  const topGainers = useMemo(
+    () => [...tickerList].sort((a, b) => b.change24h - a.change24h).slice(0, 5),
+    [tickerList],
+  );
+
+  const topLosers = useMemo(
+    () => [...tickerList].sort((a, b) => a.change24h - b.change24h).slice(0, 5),
+    [tickerList],
+  );
 
   const btcTicker = tickers.get('BTCUSDT');
 
@@ -528,54 +607,16 @@ const Dashboard: React.FC = () => {
         </div>
         <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-border">
           <div className="flex gap-3 pb-2 min-w-max">
-            {watchlist.map((t) => {
-              const isPositive = t.change24h >= 0;
-              const isStarred = userWatchlist.has(t.symbol);
-              return (
-                <div
-                  key={t.symbol}
-                  className={cn(
-                    'flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all',
-                    'bg-card border-border hover:border-primary/50 hover:shadow-sm',
-                    'select-none shrink-0'
-                  )}
-                >
-                  {isAuthenticated && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); toggleWatchlist(t.symbol); }}
-                      className="flex-shrink-0 transition-colors hover:scale-110"
-                      title={isStarred ? 'Remove from watchlist' : 'Add to watchlist'}
-                    >
-                      <Star
-                        className={cn(
-                          'w-4 h-4',
-                          isStarred ? 'text-primary fill-primary' : 'text-muted-foreground'
-                        )}
-                      />
-                    </button>
-                  )}
-                  <button
-                    onClick={() => navigate(`/chart/${t.symbol}`)}
-                    className="flex items-center gap-3 cursor-pointer"
-                  >
-                    <span className="text-sm font-semibold text-foreground">
-                      {stripQuote(t.symbol)}
-                    </span>
-                    <span className="text-sm font-mono text-foreground">
-                      {formatPrice(t.price)}
-                    </span>
-                    <span
-                      className={cn(
-                        'text-xs font-mono font-medium',
-                        isPositive ? 'text-success' : 'text-danger'
-                      )}
-                    >
-                      {formatChange(t.change24h)}
-                    </span>
-                  </button>
-                </div>
-              );
-            })}
+            {watchlist.map((t) => (
+              <WatchlistItem
+                key={t.symbol}
+                ticker={t}
+                isStarred={userWatchlist.has(t.symbol)}
+                isAuthenticated={isAuthenticated}
+                onToggle={toggleWatchlist}
+                onNavigate={(sym) => navigate(`/chart/${sym}`)}
+              />
+            ))}
           </div>
         </div>
       </section>
