@@ -48,6 +48,7 @@ import {
   Hexagon,
   Megaphone,
   PieChart,
+  Coins,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -104,6 +105,8 @@ const navItems: NavItem[] = [
   { icon: Layers, labelKey: 'nav.narratives', path: '/narratives' },
   { icon: Activity, labelKey: 'nav.marketBreadth', path: '/market-breadth' },
   { icon: BarChart3, labelKey: 'nav.openInterest', path: '/open-interest' },
+  { icon: Coins, labelKey: 'nav.defi', path: '/defi' },
+  { icon: BarChart2, labelKey: 'nav.marketProfile', path: '/market-profile' },
   { icon: BarChart2, labelKey: 'nav.options', path: '/options' },
   { icon: BookMarked, labelKey: 'nav.indicatorLibrary', path: '/indicators' },
   { icon: Code, labelKey: 'nav.scriptEditor', path: '/script-editor' },

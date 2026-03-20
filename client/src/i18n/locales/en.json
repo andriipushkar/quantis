@@ -45,7 +45,10 @@
     "orderFlow": "Order Flow",
     "status": "Status",
     "influencerTracker": "Influencer Tracker",
-    "tokenomics": "Tokenomics"
+    "tokenomics": "Tokenomics",
+    "defi": "DeFi",
+    "marketProfile": "Market Profile",
+    "apiDocs": "API Docs"
   },
   "auth": {
     "login": "Log In",

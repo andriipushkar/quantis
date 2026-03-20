@@ -60,6 +60,9 @@ const Terms = lazy(() => import('@/pages/Terms'));
 const Privacy = lazy(() => import('@/pages/Privacy'));
 const InfluencerTracker = lazy(() => import('@/pages/InfluencerTracker'));
 const Tokenomics = lazy(() => import('@/pages/Tokenomics'));
+const DeFi = lazy(() => import('@/pages/DeFi'));
+const MarketProfile = lazy(() => import('@/pages/MarketProfile'));
+const APIDocs = lazy(() => import('@/pages/APIDocs'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
 const PageLoader: React.FC = () => (
@@ -125,6 +128,7 @@ const App: React.FC = () => {
           <Route path="/status" element={<Status />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/privacy" element={<Privacy />} />
+          <Route path="/api-docs" element={<APIDocs />} />
 
           {/* App routes wrapped in Layout */}
           <Route element={<Layout />}>
@@ -175,6 +179,8 @@ const App: React.FC = () => {
             <Route path="/admin" element={<Admin />} />
             <Route path="/influencers" element={<InfluencerTracker />} />
             <Route path="/tokenomics" element={<Tokenomics />} />
+            <Route path="/defi" element={<DeFi />} />
+            <Route path="/market-profile" element={<MarketProfile />} />
           </Route>
 
           {/* Catch-all 404 */}

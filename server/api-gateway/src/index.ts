@@ -36,6 +36,7 @@ import taxRoutes from './routes/tax.js';
 import emailRoutes from './routes/emails.js';
 import influencerRoutes from './routes/influencers.js';
 import tokenomicsRoutes from './routes/tokenomics.js';
+import docsRoutes from './routes/docs.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import Redis from 'ioredis';
 
@@ -98,6 +99,7 @@ app.use('/api/v1/tax', taxRoutes);
 app.use('/api/v1/emails', emailRoutes);
 app.use('/api/v1/influencers', influencerRoutes);
 app.use('/api/v1/tokenomics', tokenomicsRoutes);
+app.use('/api/v1/docs', docsRoutes);
 
 // Health check
 app.get('/health', (_req, res) => {

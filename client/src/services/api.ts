@@ -487,4 +487,51 @@ export async function sendTelegramTest(): Promise<void> {
   await api.post('/telegram/test');
 }
 
+// --- DeFi ---
+
+export interface DeFiProtocol {
+  name: string;
+  tvl: number;
+  tvlChange24h: number;
+  chain: string;
+  category: string;
+  apy: number;
+  riskRating: number;
+}
+
+export interface DeFiData {
+  protocols: DeFiProtocol[];
+  totalTvl: number;
+  avgApy: number;
+  protocolCount: number;
+}
+
+export async function getDeFiOverview(): Promise<DeFiData> {
+  const res = await api.get<{ success: boolean; data: DeFiData }>('/market/defi');
+  return res.data;
+}
+
+// --- Market Profile ---
+
+export interface VolumeProfileLevel {
+  price: number;
+  volume: number;
+  pct: number;
+}
+
+export interface MarketProfileData {
+  symbol: string;
+  poc: number;
+  vaHigh: number;
+  vaLow: number;
+  distributionShape: 'normal' | 'p-shape' | 'b-shape';
+  volumeProfile: VolumeProfileLevel[];
+  totalVolume: number;
+}
+
+export async function getMarketProfile(symbol: string): Promise<MarketProfileData> {
+  const res = await api.get<{ success: boolean; data: MarketProfileData }>(`/market/profile/${symbol}`);
+  return res.data;
+}
+
 export { setToken, clearToken, getToken };

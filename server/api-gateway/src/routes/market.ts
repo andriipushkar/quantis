@@ -1951,4 +1951,252 @@ router.get('/orderflow/:symbol', async (req: Request, res: Response) => {
   }
 });
 
+// --- DeFi TVL Tracker ---
+
+const DEFI_PROTOCOLS = [
+  { name: 'Lido', tvl: 28_400_000_000, chain: 'Ethereum', category: 'Liquid Staking', apy: 3.8, riskRating: 2 },
+  { name: 'Aave', tvl: 12_500_000_000, chain: 'Ethereum', category: 'Lending', apy: 3.2, riskRating: 2 },
+  { name: 'MakerDAO', tvl: 8_700_000_000, chain: 'Ethereum', category: 'CDP', apy: 5.0, riskRating: 2 },
+  { name: 'Uniswap', tvl: 5_800_000_000, chain: 'Ethereum', category: 'DEX', apy: 12.5, riskRating: 3 },
+  { name: 'Curve', tvl: 3_200_000_000, chain: 'Multi', category: 'DEX', apy: 8.1, riskRating: 3 },
+  { name: 'Compound', tvl: 2_800_000_000, chain: 'Ethereum', category: 'Lending', apy: 2.9, riskRating: 2 },
+  { name: 'PancakeSwap', tvl: 2_100_000_000, chain: 'BSC', category: 'DEX', apy: 15.2, riskRating: 3 },
+  { name: 'Raydium', tvl: 1_200_000_000, chain: 'Solana', category: 'DEX', apy: 18.5, riskRating: 4 },
+  { name: 'Jupiter', tvl: 900_000_000, chain: 'Solana', category: 'Aggregator', apy: 0, riskRating: 3 },
+  { name: 'GMX', tvl: 700_000_000, chain: 'Arbitrum', category: 'Derivatives', apy: 22.0, riskRating: 5 },
+];
+
+router.get('/defi', async (_req: Request, res: Response) => {
+  try {
+    // Check cache (10 min)
+    const cached = await redis.get('market:defi');
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+
+    // Seeded random for stable values within cache window
+    const hourSeed = new Date().toISOString().slice(0, 13);
+    function seededRandom(seed: string): number {
+      let h = 0;
+      for (let i = 0; i < seed.length; i++) {
+        h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
+      }
+      return (Math.abs(h) % 10000) / 10000;
+    }
+
+    const protocols = DEFI_PROTOCOLS.map((p) => {
+      const rand = seededRandom(p.name + hourSeed);
+      const tvlChange24h = Math.round((rand * 10 - 5) * 100) / 100; // +-5%
+      return { ...p, tvlChange24h };
+    });
+
+    const totalTvl = protocols.reduce((sum, p) => sum + p.tvl, 0);
+    const apyProtos = protocols.filter((p) => p.apy > 0);
+    const avgApy = apyProtos.length > 0
+      ? Math.round((apyProtos.reduce((sum, p) => sum + p.apy, 0) / apyProtos.length) * 100) / 100
+      : 0;
+
+    const response = {
+      success: true,
+      data: {
+        protocols,
+        totalTvl,
+        avgApy,
+        protocolCount: protocols.length,
+      },
+    };
+
+    await redis.set('market:defi', JSON.stringify(response), 'EX', 600);
+    res.json(response);
+  } catch (err) {
+    logger.error('DeFi TVL error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// --- Market Profile (TPO / Volume Profile) ---
+
+router.get('/profile/:symbol', async (req: Request, res: Response) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+
+    // Check cache (5 min)
+    const cacheKey = `market:profile:${symbol}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+
+    // Find pair
+    const pairResult = await query(
+      `SELECT tp.id FROM trading_pairs tp
+       JOIN exchanges e ON e.id = tp.exchange_id
+       WHERE tp.symbol = $1 AND tp.is_active = true
+       LIMIT 1`,
+      [symbol]
+    );
+
+    if (pairResult.rows.length === 0) {
+      res.status(404).json({ success: false, error: `No data found for ${symbol}` });
+      return;
+    }
+
+    const pairId = pairResult.rows[0].id;
+
+    // Fetch last 50 candles (1h)
+    const candlesResult = await query(
+      `SELECT o.high, o.low, o.close, o.volume
+       FROM ohlcv_1h o
+       WHERE o.pair_id = $1
+       ORDER BY o.time DESC
+       LIMIT 50`,
+      [pairId]
+    );
+
+    const candles = candlesResult.rows
+      .map((r: { high: string; low: string; close: string; volume: string }) => ({
+        high: parseFloat(r.high),
+        low: parseFloat(r.low),
+        close: parseFloat(r.close),
+        volume: parseFloat(r.volume),
+      }))
+      .reverse();
+
+    if (candles.length < 10) {
+      res.status(404).json({ success: false, error: 'Insufficient data for market profile' });
+      return;
+    }
+
+    // Determine overall high and low
+    const overallHigh = Math.max(...candles.map((c) => c.high));
+    const overallLow = Math.min(...candles.map((c) => c.low));
+    const range = overallHigh - overallLow;
+
+    if (range === 0) {
+      res.status(404).json({ success: false, error: 'No price range in data' });
+      return;
+    }
+
+    // Split into 10 price levels
+    const numLevels = 10;
+    const step = range / numLevels;
+    const levels: { price: number; volume: number }[] = [];
+
+    for (let i = 0; i < numLevels; i++) {
+      levels.push({
+        price: Math.round((overallLow + step * (i + 0.5)) * 100) / 100,
+        volume: 0,
+      });
+    }
+
+    // Distribute volume into levels
+    let totalVolume = 0;
+    for (const c of candles) {
+      const candleRange = c.high - c.low;
+      if (candleRange === 0) {
+        // All volume goes to the level containing the close
+        const idx = Math.min(Math.floor((c.close - overallLow) / step), numLevels - 1);
+        levels[Math.max(0, idx)].volume += c.volume;
+      } else {
+        // Distribute volume proportionally across levels the candle spans
+        for (let i = 0; i < numLevels; i++) {
+          const levelLow = overallLow + step * i;
+          const levelHigh = levelLow + step;
+          const overlap = Math.max(0, Math.min(c.high, levelHigh) - Math.max(c.low, levelLow));
+          if (overlap > 0) {
+            const fraction = overlap / candleRange;
+            levels[i].volume += c.volume * fraction;
+          }
+        }
+      }
+      totalVolume += c.volume;
+    }
+
+    // Round volumes
+    levels.forEach((l) => { l.volume = Math.round(l.volume); });
+
+    // POC: level with most volume
+    let pocIdx = 0;
+    let maxVol = 0;
+    for (let i = 0; i < numLevels; i++) {
+      if (levels[i].volume > maxVol) {
+        maxVol = levels[i].volume;
+        pocIdx = i;
+      }
+    }
+    const poc = levels[pocIdx].price;
+
+    // Value Area: 70% of total volume centered around POC
+    const vaTarget = totalVolume * 0.7;
+    let vaVolume = levels[pocIdx].volume;
+    let vaLowIdx = pocIdx;
+    let vaHighIdx = pocIdx;
+
+    while (vaVolume < vaTarget && (vaLowIdx > 0 || vaHighIdx < numLevels - 1)) {
+      const canGoLow = vaLowIdx > 0;
+      const canGoHigh = vaHighIdx < numLevels - 1;
+
+      if (canGoLow && canGoHigh) {
+        if (levels[vaLowIdx - 1].volume >= levels[vaHighIdx + 1].volume) {
+          vaLowIdx--;
+          vaVolume += levels[vaLowIdx].volume;
+        } else {
+          vaHighIdx++;
+          vaVolume += levels[vaHighIdx].volume;
+        }
+      } else if (canGoLow) {
+        vaLowIdx--;
+        vaVolume += levels[vaLowIdx].volume;
+      } else {
+        vaHighIdx++;
+        vaVolume += levels[vaHighIdx].volume;
+      }
+    }
+
+    const vaHigh = Math.round((overallLow + step * (vaHighIdx + 1)) * 100) / 100;
+    const vaLow = Math.round((overallLow + step * vaLowIdx) * 100) / 100;
+
+    // Distribution shape
+    const topThirdVol = levels.slice(Math.floor(numLevels * 0.67)).reduce((s, l) => s + l.volume, 0);
+    const bottomThirdVol = levels.slice(0, Math.ceil(numLevels * 0.33)).reduce((s, l) => s + l.volume, 0);
+
+    let distributionShape: 'normal' | 'p-shape' | 'b-shape';
+    if (topThirdVol > totalVolume * 0.45) {
+      distributionShape = 'p-shape'; // volume concentrated at top
+    } else if (bottomThirdVol > totalVolume * 0.45) {
+      distributionShape = 'b-shape'; // volume concentrated at bottom
+    } else {
+      distributionShape = 'normal';
+    }
+
+    // Build volume profile with percentages
+    const volumeProfile = levels.map((l) => ({
+      price: l.price,
+      volume: l.volume,
+      pct: totalVolume > 0 ? Math.round((l.volume / totalVolume) * 10000) / 100 : 0,
+    }));
+
+    const response = {
+      success: true,
+      data: {
+        symbol,
+        poc,
+        vaHigh,
+        vaLow,
+        distributionShape,
+        volumeProfile,
+        totalVolume: Math.round(totalVolume),
+      },
+    };
+
+    await redis.set(cacheKey, JSON.stringify(response), 'EX', 300);
+    res.json(response);
+  } catch (err) {
+    logger.error('Market profile error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 export default router;
