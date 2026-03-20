@@ -43,6 +43,10 @@ const SocialFeed = lazy(() => import('@/pages/SocialFeed'));
 const Confluence = lazy(() => import('@/pages/Confluence'));
 const Liquidations = lazy(() => import('@/pages/Liquidations'));
 const AntiLiquidation = lazy(() => import('@/pages/AntiLiquidation'));
+const ElliottWave = lazy(() => import('@/pages/ElliottWave'));
+const HarmonicPatterns = lazy(() => import('@/pages/HarmonicPatterns'));
+const WyckoffPhase = lazy(() => import('@/pages/WyckoffPhase'));
+const OrderFlow = lazy(() => import('@/pages/OrderFlow'));
 const PatternScanner = lazy(() => import('@/pages/PatternScanner'));
 const Marketplace = lazy(() => import('@/pages/Marketplace'));
 const WalletTracker = lazy(() => import('@/pages/WalletTracker'));
@@ -151,6 +155,10 @@ const App: React.FC = () => {
             <Route path="/confluence" element={<Confluence />} />
             <Route path="/liquidations" element={<Liquidations />} />
             <Route path="/anti-liquidation" element={<AntiLiquidation />} />
+            <Route path="/elliott-wave" element={<ElliottWave />} />
+            <Route path="/harmonic-patterns" element={<HarmonicPatterns />} />
+            <Route path="/wyckoff" element={<WyckoffPhase />} />
+            <Route path="/order-flow" element={<OrderFlow />} />
             <Route path="/pattern-scanner" element={<PatternScanner />} />
             <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/wallet-tracker" element={<WalletTracker />} />

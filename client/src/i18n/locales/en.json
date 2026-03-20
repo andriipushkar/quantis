@@ -39,6 +39,10 @@
     "options": "Options",
     "indicatorLibrary": "Indicators",
     "scriptEditor": "Script Editor",
+    "elliottWave": "Elliott Wave",
+    "harmonicPatterns": "Harmonic Patterns",
+    "wyckoff": "Wyckoff Phase",
+    "orderFlow": "Order Flow",
     "status": "Status"
   },
   "auth": {

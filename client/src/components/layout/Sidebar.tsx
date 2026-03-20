@@ -41,8 +41,11 @@ import {
   Wallet2,
   FileText,
   BarChart2,
+  BarChart4,
   BookMarked,
   Code,
+  Waves,
+  Hexagon,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -118,6 +121,10 @@ const navItems: NavItem[] = [
   { icon: Crosshair, labelKey: 'nav.confluence', path: '/confluence' },
   { icon: Flame, labelKey: 'nav.liquidations', path: '/liquidations' },
   { icon: Eye, labelKey: 'nav.patternScanner', path: '/pattern-scanner' },
+  { icon: Waves, labelKey: 'nav.elliottWave', path: '/elliott-wave' },
+  { icon: Hexagon, labelKey: 'nav.harmonicPatterns', path: '/harmonic-patterns' },
+  { icon: Layers, labelKey: 'nav.wyckoff', path: '/wyckoff' },
+  { icon: BarChart4, labelKey: 'nav.orderFlow', path: '/order-flow' },
   { icon: Store, labelKey: 'nav.marketplace', path: '/marketplace' },
   { icon: Wallet2, labelKey: 'nav.walletTracker', path: '/wallet-tracker' },
   { icon: FileText, labelKey: 'nav.taxReport', path: '/tax-report' },

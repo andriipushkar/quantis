@@ -1787,4 +1787,168 @@ router.get('/liquidations/:symbol', async (req: Request, res: Response) => {
   }
 });
 
+// GET /orderflow/:symbol — Simulated order flow / footprint data
+router.get('/orderflow/:symbol', async (req: Request, res: Response) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+
+    // Check cache (2 min)
+    const cacheKey = `market:orderflow:${symbol}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+
+    // Find pair
+    const pairResult = await query(
+      `SELECT tp.id FROM trading_pairs tp
+       JOIN exchanges e ON e.id = tp.exchange_id
+       WHERE tp.symbol = $1 AND tp.is_active = true
+       LIMIT 1`,
+      [symbol]
+    );
+
+    if (pairResult.rows.length === 0) {
+      res.status(404).json({ success: false, error: `No data found for ${symbol}` });
+      return;
+    }
+
+    const pairId = pairResult.rows[0].id;
+
+    // Fetch last 20 candles
+    const candlesResult = await query(
+      `SELECT o.time, o.open, o.high, o.low, o.close, o.volume
+       FROM ohlcv_1m o
+       WHERE o.pair_id = $1
+       ORDER BY o.time DESC
+       LIMIT 20`,
+      [pairId]
+    );
+
+    const candles = candlesResult.rows
+      .map((r: { time: string; open: string; high: string; low: string; close: string; volume: string }) => ({
+        time: new Date(r.time).toISOString(),
+        open: parseFloat(r.open),
+        high: parseFloat(r.high),
+        low: parseFloat(r.low),
+        close: parseFloat(r.close),
+        volume: parseFloat(r.volume),
+      }))
+      .reverse();
+
+    if (candles.length === 0) {
+      res.json({
+        success: true,
+        data: { symbol, candles: [], cumulativeDelta: [], summary: { totalBuys: 0, totalSells: 0, netDelta: 0, dominantSide: 'neutral' } },
+      });
+      return;
+    }
+
+    // Seeded pseudo-random for stable results
+    function pseudoRandom(seed: string): number {
+      let h = 0;
+      for (let i = 0; i < seed.length; i++) {
+        h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
+      }
+      return (Math.abs(h) % 10000) / 10000;
+    }
+
+    const hourSeed = new Date().toISOString().slice(0, 16); // changes every minute
+    let totalBuys = 0;
+    let totalSells = 0;
+    let cumDelta = 0;
+    const cumulativeDelta: number[] = [];
+
+    const footprintCandles = candles.map((c, ci) => {
+      const range = c.high - c.low;
+      const levels: Array<{ price: number; buyVol: number; sellVol: number; delta: number }> = [];
+
+      if (range === 0) {
+        // Single level
+        const buyVol = Math.round(c.volume * 0.5);
+        const sellVol = Math.round(c.volume * 0.5);
+        levels.push({ price: Math.round(c.close * 100) / 100, buyVol, sellVol, delta: buyVol - sellVol });
+        cumDelta += buyVol - sellVol;
+        totalBuys += buyVol;
+        totalSells += sellVol;
+      } else {
+        // Split into 5 price levels
+        const step = range / 5;
+        const closePosition = (c.close - c.low) / range; // 0 = at low, 1 = at high
+
+        for (let lvl = 0; lvl < 5; lvl++) {
+          const levelPrice = c.low + step * (lvl + 0.5);
+          const levelPosition = (lvl + 0.5) / 5; // 0-1
+
+          // Volume distribution weighted by close position
+          // More buy volume near the close if bullish, more sell volume if bearish
+          const isBullish = c.close > c.open;
+          const rand = pseudoRandom(`${symbol}:${ci}:${lvl}:${hourSeed}`);
+
+          // Base allocation per level
+          const baseVol = c.volume / 5;
+          let buyRatio: number;
+
+          if (isBullish) {
+            // Bullish candle: more buys at lower levels (demand), more sells at top
+            buyRatio = 0.4 + closePosition * 0.3 - levelPosition * 0.15 + rand * 0.15;
+          } else {
+            // Bearish candle: more sells at higher levels (supply)
+            buyRatio = 0.3 + (1 - closePosition) * 0.15 - (1 - levelPosition) * 0.1 + rand * 0.15;
+          }
+
+          buyRatio = Math.max(0.1, Math.min(0.9, buyRatio));
+          const buyVol = Math.round(baseVol * buyRatio);
+          const sellVol = Math.round(baseVol * (1 - buyRatio));
+          const delta = buyVol - sellVol;
+
+          totalBuys += buyVol;
+          totalSells += sellVol;
+          cumDelta += delta;
+
+          levels.push({
+            price: Math.round(levelPrice * 100) / 100,
+            buyVol,
+            sellVol,
+            delta,
+          });
+        }
+      }
+
+      cumulativeDelta.push(Math.round(cumDelta));
+
+      return {
+        time: c.time,
+        levels,
+      };
+    });
+
+    const netDelta = totalBuys - totalSells;
+    const dominantSide = netDelta > totalBuys * 0.05 ? 'buyers' : netDelta < -totalSells * 0.05 ? 'sellers' : 'neutral';
+
+    const response = {
+      success: true,
+      data: {
+        symbol,
+        candles: footprintCandles,
+        cumulativeDelta,
+        summary: {
+          totalBuys: Math.round(totalBuys),
+          totalSells: Math.round(totalSells),
+          netDelta: Math.round(netDelta),
+          dominantSide,
+        },
+      },
+    };
+
+    // Cache 2 minutes
+    await redis.set(cacheKey, JSON.stringify(response), 'EX', 120);
+    res.json(response);
+  } catch (err) {
+    logger.error('Order flow error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 export default router;

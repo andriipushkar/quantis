@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { query } from '../config/database.js';
+import redis from '../config/redis.js';
 import logger from '../config/logger.js';
 
 const router = Router();
@@ -342,6 +343,646 @@ router.get('/patterns/:symbol', async (req: Request, res: Response) => {
     });
   } catch (err) {
     logger.error('Pattern detection error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// GET /elliott/:symbol — Simplified Elliott Wave auto-count
+router.get('/elliott/:symbol', async (req: Request, res: Response) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+    const { timeframe = '1h' } = req.query;
+    const table = `ohlcv_${timeframe}`;
+
+    // Check cache (5 min)
+    const cacheKey = `analysis:elliott:${symbol}:${timeframe}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+
+    // Find pair
+    const pairResult = await query(
+      `SELECT tp.id FROM trading_pairs tp
+       JOIN exchanges e ON e.id = tp.exchange_id
+       WHERE tp.symbol = $1 AND tp.is_active = true
+       LIMIT 1`,
+      [symbol]
+    );
+
+    if (pairResult.rows.length === 0) {
+      res.status(404).json({ success: false, error: `No data found for ${symbol}` });
+      return;
+    }
+
+    const pairId = pairResult.rows[0].id;
+
+    // Fetch last 100 candles
+    const candlesResult = await query(
+      `SELECT o.time, o.open, o.high, o.low, o.close, o.volume
+       FROM ${table} o
+       WHERE o.pair_id = $1
+       ORDER BY o.time DESC
+       LIMIT 100`,
+      [pairId]
+    );
+
+    const candles = candlesResult.rows
+      .map((r: { time: string; open: string; high: string; low: string; close: string; volume: string }) => ({
+        time: new Date(r.time).toISOString(),
+        open: parseFloat(r.open),
+        high: parseFloat(r.high),
+        low: parseFloat(r.low),
+        close: parseFloat(r.close),
+        volume: parseFloat(r.volume),
+      }))
+      .reverse();
+
+    if (candles.length < 20) {
+      res.json({ success: true, data: { symbol, waves: [], pattern: 'none', confidence: 0, description: 'Insufficient data', fibTargets: {} } });
+      return;
+    }
+
+    // Find swing highs and lows (5-bar window)
+    interface SwingPoint {
+      type: 'high' | 'low';
+      price: number;
+      index: number;
+      time: string;
+    }
+
+    const swings: SwingPoint[] = [];
+    for (let i = 2; i < candles.length - 2; i++) {
+      const isHigh = candles[i].high > candles[i - 1].high &&
+        candles[i].high > candles[i - 2].high &&
+        candles[i].high > candles[i + 1].high &&
+        candles[i].high > candles[i + 2].high;
+      const isLow = candles[i].low < candles[i - 1].low &&
+        candles[i].low < candles[i - 2].low &&
+        candles[i].low < candles[i + 1].low &&
+        candles[i].low < candles[i + 2].low;
+
+      if (isHigh) swings.push({ type: 'high', price: candles[i].high, index: i, time: candles[i].time });
+      if (isLow) swings.push({ type: 'low', price: candles[i].low, index: i, time: candles[i].time });
+    }
+
+    // Deduplicate consecutive same-type swings (keep the most extreme)
+    const filteredSwings: SwingPoint[] = [];
+    for (let i = 0; i < swings.length; i++) {
+      if (filteredSwings.length === 0 || filteredSwings[filteredSwings.length - 1].type !== swings[i].type) {
+        filteredSwings.push(swings[i]);
+      } else {
+        const last = filteredSwings[filteredSwings.length - 1];
+        if (swings[i].type === 'high' && swings[i].price > last.price) {
+          filteredSwings[filteredSwings.length - 1] = swings[i];
+        } else if (swings[i].type === 'low' && swings[i].price < last.price) {
+          filteredSwings[filteredSwings.length - 1] = swings[i];
+        }
+      }
+    }
+
+    interface WavePoint {
+      label: string;
+      price: number;
+      index: number;
+      time: string;
+    }
+
+    let waves: WavePoint[] = [];
+    let pattern: 'impulse' | 'correction' | 'none' = 'none';
+    let confidence = 0;
+    let description = 'No clear Elliott Wave pattern detected.';
+    let fibTargets: { wave3Target?: number; wave5Target?: number } = {};
+
+    // Try to fit 5-wave impulse pattern
+    // Need alternating low-high-low-high-low-high-low-high-low-high (start from a low: 0-1-2-3-4-5)
+    for (let s = 0; s < filteredSwings.length - 8; s++) {
+      // Find a starting low
+      if (filteredSwings[s].type !== 'low') continue;
+
+      const w0 = filteredSwings[s];     // Start
+      const w1 = filteredSwings[s + 1]; // Wave 1 top (high)
+      const w2 = filteredSwings[s + 2]; // Wave 2 bottom (low)
+      const w3 = filteredSwings[s + 3]; // Wave 3 top (high)
+      const w4 = filteredSwings[s + 4]; // Wave 4 bottom (low)
+      const w5 = filteredSwings[s + 5]; // Wave 5 top (high)
+
+      if (w1.type !== 'high' || w2.type !== 'low' || w3.type !== 'high' || w4.type !== 'low' || w5.type !== 'high') continue;
+
+      const wave1Len = w1.price - w0.price;
+      const wave2Retrace = w1.price - w2.price;
+      const wave3Len = w3.price - w2.price;
+      const wave4Retrace = w3.price - w4.price;
+      const wave5Len = w5.price - w4.price;
+
+      // Wave 1 must go up
+      if (wave1Len <= 0) continue;
+      // Wave 2 must not retrace more than 100% of Wave 1
+      if (wave2Retrace <= 0 || wave2Retrace >= wave1Len) continue;
+      // Wave 3 must go up and be the longest
+      if (wave3Len <= 0) continue;
+      if (wave3Len <= wave1Len || wave3Len <= wave5Len) continue;
+      // Wave 4 must not go into Wave 1 territory
+      if (w4.price <= w1.price) continue;
+      // Wave 5 must go up
+      if (wave5Len <= 0) continue;
+
+      // Score the fit based on Fibonacci ratios
+      let score = 60; // base
+
+      // W2 retraces 50-61.8% of W1
+      const w2Ratio = wave2Retrace / wave1Len;
+      if (w2Ratio >= 0.382 && w2Ratio <= 0.786) score += 10;
+      if (w2Ratio >= 0.5 && w2Ratio <= 0.618) score += 10;
+
+      // W3 ~1.618x W1
+      const w3Ratio = wave3Len / wave1Len;
+      if (w3Ratio >= 1.3 && w3Ratio <= 2.0) score += 10;
+      if (w3Ratio >= 1.5 && w3Ratio <= 1.75) score += 5;
+
+      // W4 retraces 38.2% of W3
+      const w4Ratio = wave4Retrace / wave3Len;
+      if (w4Ratio >= 0.236 && w4Ratio <= 0.5) score += 5;
+
+      if (score > confidence) {
+        confidence = Math.min(95, score);
+        pattern = 'impulse';
+        waves = [
+          { label: '0', price: round(w0.price), index: w0.index, time: w0.time },
+          { label: '1', price: round(w1.price), index: w1.index, time: w1.time },
+          { label: '2', price: round(w2.price), index: w2.index, time: w2.time },
+          { label: '3', price: round(w3.price), index: w3.index, time: w3.time },
+          { label: '4', price: round(w4.price), index: w4.index, time: w4.time },
+          { label: '5', price: round(w5.price), index: w5.index, time: w5.time },
+        ];
+        description = `5-wave impulse detected. Wave 3 is ${round(w3Ratio)}x Wave 1. Wave 2 retraces ${round(w2Ratio * 100)}% of Wave 1.`;
+        fibTargets = {
+          wave3Target: round(w2.price + wave1Len * 1.618),
+          wave5Target: round(w4.price + wave3Len * 0.618),
+        };
+      }
+    }
+
+    // Try ABC correction if no impulse found
+    if (pattern === 'none') {
+      for (let s = 0; s < filteredSwings.length - 5; s++) {
+        if (filteredSwings[s].type !== 'high') continue;
+
+        const wA0 = filteredSwings[s];     // Start (high)
+        const wA = filteredSwings[s + 1];  // A bottom (low)
+        const wB = filteredSwings[s + 2];  // B top (high)
+        const wC = filteredSwings[s + 3];  // C bottom (low)
+
+        if (wA.type !== 'low' || wB.type !== 'high' || wC.type !== 'low') continue;
+
+        const legA = wA0.price - wA.price;
+        const legB = wB.price - wA.price;
+        const legC = wB.price - wC.price;
+
+        // A must go down
+        if (legA <= 0) continue;
+        // B retraces part of A
+        const bRetrace = legB / legA;
+        if (bRetrace <= 0.2 || bRetrace >= 1.0) continue;
+        // C must go down
+        if (legC <= 0) continue;
+
+        let score = 55;
+        if (bRetrace >= 0.5 && bRetrace <= 0.786) score += 15;
+        const cRatio = legC / legA;
+        if (cRatio >= 0.618 && cRatio <= 1.618) score += 10;
+        if (cRatio >= 0.9 && cRatio <= 1.1) score += 10;
+
+        if (score > confidence) {
+          confidence = Math.min(90, score);
+          pattern = 'correction';
+          waves = [
+            { label: 'A', price: round(wA.price), index: wA.index, time: wA.time },
+            { label: 'B', price: round(wB.price), index: wB.index, time: wB.time },
+            { label: 'C', price: round(wC.price), index: wC.index, time: wC.time },
+          ];
+          description = `ABC correction detected. B retraces ${round(bRetrace * 100)}% of A. C is ${round(cRatio)}x A.`;
+          fibTargets = {
+            wave3Target: round(wA.price - legA * 0.618),
+          };
+        }
+      }
+    }
+
+    const response = {
+      success: true,
+      data: {
+        symbol,
+        waves,
+        pattern,
+        confidence,
+        description,
+        fibTargets,
+      },
+    };
+
+    await redis.set(cacheKey, JSON.stringify(response), 'EX', 300);
+    res.json(response);
+  } catch (err) {
+    logger.error('Elliott Wave error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// GET /harmonics/:symbol — Detect XABCD harmonic patterns
+router.get('/harmonics/:symbol', async (req: Request, res: Response) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+    const { timeframe = '1h' } = req.query;
+    const table = `ohlcv_${timeframe}`;
+
+    // Check cache (5 min)
+    const cacheKey = `analysis:harmonics:${symbol}:${timeframe}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+
+    // Find pair
+    const pairResult = await query(
+      `SELECT tp.id FROM trading_pairs tp
+       JOIN exchanges e ON e.id = tp.exchange_id
+       WHERE tp.symbol = $1 AND tp.is_active = true
+       LIMIT 1`,
+      [symbol]
+    );
+
+    if (pairResult.rows.length === 0) {
+      res.status(404).json({ success: false, error: `No data found for ${symbol}` });
+      return;
+    }
+
+    const pairId = pairResult.rows[0].id;
+
+    // Fetch last 80 candles
+    const candlesResult = await query(
+      `SELECT o.time, o.open, o.high, o.low, o.close, o.volume
+       FROM ${table} o
+       WHERE o.pair_id = $1
+       ORDER BY o.time DESC
+       LIMIT 80`,
+      [pairId]
+    );
+
+    const candles = candlesResult.rows
+      .map((r: { time: string; open: string; high: string; low: string; close: string; volume: string }) => ({
+        time: new Date(r.time).toISOString(),
+        open: parseFloat(r.open),
+        high: parseFloat(r.high),
+        low: parseFloat(r.low),
+        close: parseFloat(r.close),
+        volume: parseFloat(r.volume),
+      }))
+      .reverse();
+
+    if (candles.length < 15) {
+      res.json({ success: true, data: { symbol, patterns: [] } });
+      return;
+    }
+
+    // Find swing points (5-bar pivots)
+    interface SwingPt {
+      type: 'high' | 'low';
+      price: number;
+      index: number;
+    }
+
+    const swingPts: SwingPt[] = [];
+    for (let i = 2; i < candles.length - 2; i++) {
+      const isHigh = candles[i].high > candles[i - 1].high &&
+        candles[i].high > candles[i - 2].high &&
+        candles[i].high > candles[i + 1].high &&
+        candles[i].high > candles[i + 2].high;
+      const isLow = candles[i].low < candles[i - 1].low &&
+        candles[i].low < candles[i - 2].low &&
+        candles[i].low < candles[i + 1].low &&
+        candles[i].low < candles[i + 2].low;
+      if (isHigh) swingPts.push({ type: 'high', price: candles[i].high, index: i });
+      if (isLow) swingPts.push({ type: 'low', price: candles[i].low, index: i });
+    }
+
+    // Deduplicate consecutive same-type
+    const pivots: SwingPt[] = [];
+    for (const pt of swingPts) {
+      if (pivots.length === 0 || pivots[pivots.length - 1].type !== pt.type) {
+        pivots.push(pt);
+      } else {
+        const last = pivots[pivots.length - 1];
+        if (pt.type === 'high' && pt.price > last.price) pivots[pivots.length - 1] = pt;
+        else if (pt.type === 'low' && pt.price < last.price) pivots[pivots.length - 1] = pt;
+      }
+    }
+
+    // Harmonic pattern definitions
+    const harmonicDefs = [
+      { name: 'Gartley', bRange: [0.568, 0.668], dRange: [0.736, 0.836] },
+      { name: 'Butterfly', bRange: [0.736, 0.836], dRange: [1.22, 1.32] },
+      { name: 'Bat', bRange: [0.332, 0.55], dRange: [0.836, 0.936] },
+      { name: 'Crab', bRange: [0.332, 0.668], dRange: [1.568, 1.668] },
+    ];
+
+    interface HarmonicPattern {
+      name: string;
+      type: 'bullish' | 'bearish';
+      points: { X: { price: number; index: number }; A: { price: number; index: number }; B: { price: number; index: number }; C: { price: number; index: number }; D: { price: number; index: number } };
+      ratios: { AB_XA: number; BC_AB: number; CD_BC: number; AD_XA: number };
+      confidence: number;
+      prz: { low: number; high: number };
+      description: string;
+    }
+
+    const patterns: HarmonicPattern[] = [];
+
+    for (let i = 0; i < pivots.length - 4; i++) {
+      const X = pivots[i];
+      const A = pivots[i + 1];
+      const B = pivots[i + 2];
+      const C = pivots[i + 3];
+      const D = pivots[i + 4];
+
+      const XA = Math.abs(A.price - X.price);
+      if (XA === 0) continue;
+      const AB = Math.abs(B.price - A.price);
+      const BC = Math.abs(C.price - B.price);
+      const CD = Math.abs(D.price - C.price);
+      const AD = Math.abs(D.price - A.price);
+
+      const abXaRatio = AB / XA;
+      const bcAbRatio = AB > 0 ? BC / AB : 0;
+      const cdBcRatio = BC > 0 ? CD / BC : 0;
+      const adXaRatio = AD / XA;
+
+      // Determine if bullish or bearish
+      const isBullish = X.type === 'low' && A.type === 'high';
+      const isBearish = X.type === 'high' && A.type === 'low';
+
+      if (!isBullish && !isBearish) continue;
+
+      for (const def of harmonicDefs) {
+        if (abXaRatio >= def.bRange[0] && abXaRatio <= def.bRange[1] &&
+            adXaRatio >= def.dRange[0] && adXaRatio <= def.dRange[1]) {
+          // Calculate confidence
+          const bMid = (def.bRange[0] + def.bRange[1]) / 2;
+          const dMid = (def.dRange[0] + def.dRange[1]) / 2;
+          const bDev = Math.abs(abXaRatio - bMid) / (def.bRange[1] - def.bRange[0]);
+          const dDev = Math.abs(adXaRatio - dMid) / (def.dRange[1] - def.dRange[0]);
+          const conf = Math.round(Math.max(40, Math.min(95, 85 - (bDev + dDev) * 30)));
+
+          const przRange = D.price * 0.005;
+          patterns.push({
+            name: def.name,
+            type: isBullish ? 'bullish' : 'bearish',
+            points: {
+              X: { price: round(X.price), index: X.index },
+              A: { price: round(A.price), index: A.index },
+              B: { price: round(B.price), index: B.index },
+              C: { price: round(C.price), index: C.index },
+              D: { price: round(D.price), index: D.index },
+            },
+            ratios: {
+              AB_XA: round(abXaRatio * 1000) / 1000,
+              BC_AB: round(bcAbRatio * 1000) / 1000,
+              CD_BC: round(cdBcRatio * 1000) / 1000,
+              AD_XA: round(adXaRatio * 1000) / 1000,
+            },
+            confidence: conf,
+            prz: { low: round(D.price - przRange), high: round(D.price + przRange) },
+            description: `${def.name} ${isBullish ? 'bullish' : 'bearish'} pattern. AB/XA=${round(abXaRatio * 100) / 100}, AD/XA=${round(adXaRatio * 100) / 100}. PRZ near $${round(D.price)}.`,
+          });
+        }
+      }
+    }
+
+    // Sort by confidence descending
+    patterns.sort((a, b) => b.confidence - a.confidence);
+
+    const response = {
+      success: true,
+      data: { symbol, patterns: patterns.slice(0, 10) },
+    };
+
+    await redis.set(cacheKey, JSON.stringify(response), 'EX', 300);
+    res.json(response);
+  } catch (err) {
+    logger.error('Harmonics error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// GET /wyckoff/:symbol — Detect Wyckoff market phase
+router.get('/wyckoff/:symbol', async (req: Request, res: Response) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+
+    // Check cache (5 min)
+    const cacheKey = `analysis:wyckoff:${symbol}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+
+    // Find pair
+    const pairResult = await query(
+      `SELECT tp.id FROM trading_pairs tp
+       JOIN exchanges e ON e.id = tp.exchange_id
+       WHERE tp.symbol = $1 AND tp.is_active = true
+       LIMIT 1`,
+      [symbol]
+    );
+
+    if (pairResult.rows.length === 0) {
+      res.status(404).json({ success: false, error: `No data found for ${symbol}` });
+      return;
+    }
+
+    const pairId = pairResult.rows[0].id;
+
+    // Fetch last 200 1m candles
+    const candlesResult = await query(
+      `SELECT o.time, o.open, o.high, o.low, o.close, o.volume
+       FROM ohlcv_1m o
+       WHERE o.pair_id = $1
+       ORDER BY o.time DESC
+       LIMIT 200`,
+      [pairId]
+    );
+
+    const candles = candlesResult.rows
+      .map((r: { time: string; open: string; high: string; low: string; close: string; volume: string }) => ({
+        time: new Date(r.time).toISOString(),
+        open: parseFloat(r.open),
+        high: parseFloat(r.high),
+        low: parseFloat(r.low),
+        close: parseFloat(r.close),
+        volume: parseFloat(r.volume),
+      }))
+      .reverse();
+
+    if (candles.length < 30) {
+      res.json({
+        success: true,
+        data: {
+          symbol, phase: 'unknown', confidence: 0,
+          description: 'Insufficient data for Wyckoff analysis.',
+          events: [], volumeAnalysis: { upVolume: 0, downVolume: 0, ratio: 0 },
+          tradingImplication: 'Wait for more data.',
+        },
+      });
+      return;
+    }
+
+    // Volume analysis: up vs down volume
+    let upVolume = 0;
+    let downVolume = 0;
+    for (const c of candles) {
+      if (c.close >= c.open) upVolume += c.volume;
+      else downVolume += c.volume;
+    }
+    const volumeRatio = downVolume > 0 ? round(upVolume / downVolume * 100) / 100 : 999;
+
+    // Price structure analysis
+    const closes = candles.map((c) => c.close);
+    const highs = candles.map((c) => c.high);
+    const lows = candles.map((c) => c.low);
+    const volumes = candles.map((c) => c.volume);
+
+    const overallHigh = Math.max(...highs);
+    const overallLow = Math.min(...lows);
+    const range = overallHigh - overallLow;
+    const currentPrice = closes[closes.length - 1];
+
+    // Average volume
+    const avgVolume = volumes.reduce((a, b) => a + b, 0) / volumes.length;
+
+    // Detect events
+    interface WyckoffEvent {
+      name: string;
+      type: string;
+      index: number;
+      price: number;
+    }
+
+    const events: WyckoffEvent[] = [];
+
+    // Selling Climax (SC): sharp drop + high volume spike
+    for (let i = 5; i < candles.length; i++) {
+      const drop = (candles[i - 5].close - candles[i].close) / candles[i - 5].close;
+      if (drop > 0.02 && candles[i].volume > avgVolume * 2) {
+        events.push({ name: 'Selling Climax', type: 'SC', index: i, price: round(candles[i].low) });
+        break;
+      }
+    }
+
+    // Automatic Rally (AR): bounce after any SC
+    const scEvent = events.find((e) => e.type === 'SC');
+    if (scEvent) {
+      for (let i = scEvent.index + 1; i < Math.min(scEvent.index + 15, candles.length); i++) {
+        const bounce = (candles[i].high - candles[scEvent.index].low) / candles[scEvent.index].low;
+        if (bounce > 0.01) {
+          events.push({ name: 'Automatic Rally', type: 'AR', index: i, price: round(candles[i].high) });
+          break;
+        }
+      }
+    }
+
+    // Spring: false breakout below support with quick recovery
+    const supportLevel = overallLow + range * 0.1;
+    for (let i = candles.length - 30; i < candles.length - 2; i++) {
+      if (i < 0) continue;
+      if (candles[i].low < supportLevel && candles[i + 1].close > supportLevel && candles[i + 2].close > supportLevel) {
+        events.push({ name: 'Spring', type: 'spring', index: i, price: round(candles[i].low) });
+        break;
+      }
+    }
+
+    // Sign of Strength (SOS): breakout above range with volume
+    const resistanceLevel = overallHigh - range * 0.1;
+    for (let i = candles.length - 20; i < candles.length; i++) {
+      if (i < 0) continue;
+      if (candles[i].close > resistanceLevel && candles[i].volume > avgVolume * 1.5) {
+        events.push({ name: 'Sign of Strength', type: 'SOS', index: i, price: round(candles[i].close) });
+        break;
+      }
+    }
+
+    // Classify phase
+    let phase: string;
+    let confidence: number;
+    let description: string;
+    let tradingImplication: string;
+
+    // Check if price is ranging (within 80% of range middle)
+    const midRange = (overallHigh + overallLow) / 2;
+    const recentCloses = closes.slice(-20);
+    const recentHigh = Math.max(...recentCloses);
+    const recentLow = Math.min(...recentCloses);
+    const recentRange = recentHigh - recentLow;
+    const isRanging = range > 0 ? recentRange / range < 0.5 : false;
+
+    // Check trend direction
+    const firstHalf = closes.slice(0, Math.floor(closes.length / 2));
+    const secondHalf = closes.slice(Math.floor(closes.length / 2));
+    const firstAvg = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
+    const secondAvg = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
+    const trendUp = secondAvg > firstAvg * 1.005;
+    const trendDown = secondAvg < firstAvg * 0.995;
+
+    if (isRanging && volumeRatio > 1.2 && events.some((e) => e.type === 'spring' || e.type === 'SC')) {
+      phase = 'accumulation';
+      confidence = Math.min(85, 55 + events.length * 8);
+      description = 'Price is consolidating in a range with higher buying volume. Potential accumulation phase before a markup move.';
+      tradingImplication = 'Look for spring or sign-of-strength events as entry signals for long positions.';
+    } else if (isRanging && volumeRatio < 0.8) {
+      phase = 'distribution';
+      confidence = Math.min(80, 50 + (1 / volumeRatio) * 10);
+      description = 'Price is consolidating with selling pressure dominating. Potential distribution before a markdown move.';
+      tradingImplication = 'Exercise caution on long positions. Watch for upthrust failures as potential short signals.';
+    } else if (trendUp) {
+      phase = 'markup';
+      confidence = Math.min(85, 55 + Math.round((secondAvg / firstAvg - 1) * 500));
+      description = 'Price is in an uptrend with sustained buying. Markup phase indicates the trend following accumulation.';
+      tradingImplication = 'Look for pullbacks to support levels for long entries. Trail stops to protect profits.';
+    } else if (trendDown) {
+      phase = 'markdown';
+      confidence = Math.min(85, 55 + Math.round((1 - secondAvg / firstAvg) * 500));
+      description = 'Price is in a downtrend with sustained selling. Markdown phase indicates the trend following distribution.';
+      tradingImplication = 'Avoid long positions. Wait for selling climax and signs of accumulation before buying.';
+    } else {
+      phase = 'accumulation';
+      confidence = 40;
+      description = 'Market is in a transitional state. No clear Wyckoff phase dominates.';
+      tradingImplication = 'Stay on the sidelines or use reduced position sizes until a clearer signal emerges.';
+    }
+
+    const response = {
+      success: true,
+      data: {
+        symbol,
+        phase,
+        confidence,
+        description,
+        events,
+        volumeAnalysis: {
+          upVolume: Math.round(upVolume),
+          downVolume: Math.round(downVolume),
+          ratio: volumeRatio,
+        },
+        tradingImplication,
+      },
+    };
+
+    await redis.set(cacheKey, JSON.stringify(response), 'EX', 300);
+    res.json(response);
+  } catch (err) {
+    logger.error('Wyckoff error', { error: (err as Error).message });
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
