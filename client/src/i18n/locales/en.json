@@ -32,7 +32,9 @@
     "confluence": "Confluence Map",
     "liquidations": "Liquidations",
     "patternScanner": "Pattern Scanner",
-    "antiLiquidation": "Anti-Liquidation"
+    "antiLiquidation": "Anti-Liquidation",
+    "marketplace": "Marketplace",
+    "walletTracker": "Wallet Tracker"
   },
   "auth": {
     "login": "Log In",

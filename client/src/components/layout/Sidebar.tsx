@@ -37,6 +37,8 @@ import {
   Crosshair,
   Flame,
   Eye,
+  Store,
+  Wallet2,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -109,6 +111,8 @@ const navItems: NavItem[] = [
   { icon: Crosshair, labelKey: 'nav.confluence', path: '/confluence' },
   { icon: Flame, labelKey: 'nav.liquidations', path: '/liquidations' },
   { icon: Eye, labelKey: 'nav.patternScanner', path: '/pattern-scanner' },
+  { icon: Store, labelKey: 'nav.marketplace', path: '/marketplace' },
+  { icon: Wallet2, labelKey: 'nav.walletTracker', path: '/wallet-tracker' },
   { icon: User, labelKey: 'nav.profile', path: '/profile' },
   { icon: Rewind, labelKey: 'nav.chartReplay', path: '/chart-replay' },
   { icon: SettingsIcon, labelKey: 'nav.settings', path: '/settings' },

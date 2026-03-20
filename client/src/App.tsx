@@ -43,6 +43,8 @@ const Confluence = lazy(() => import('@/pages/Confluence'));
 const Liquidations = lazy(() => import('@/pages/Liquidations'));
 const AntiLiquidation = lazy(() => import('@/pages/AntiLiquidation'));
 const PatternScanner = lazy(() => import('@/pages/PatternScanner'));
+const Marketplace = lazy(() => import('@/pages/Marketplace'));
+const WalletTracker = lazy(() => import('@/pages/WalletTracker'));
 const Admin = lazy(() => import('@/pages/Admin'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
@@ -121,6 +123,8 @@ const App: React.FC = () => {
             <Route path="/liquidations" element={<Liquidations />} />
             <Route path="/anti-liquidation" element={<AntiLiquidation />} />
             <Route path="/pattern-scanner" element={<PatternScanner />} />
+            <Route path="/marketplace" element={<Marketplace />} />
+            <Route path="/wallet-tracker" element={<WalletTracker />} />
             <Route path="/admin" element={<Admin />} />
           </Route>
 
