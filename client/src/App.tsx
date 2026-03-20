@@ -1,9 +1,10 @@
-import React, { Suspense, lazy, useEffect } from 'react';
+import React, { Suspense, lazy, useEffect, useState, useCallback } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
 import { useAuthStore } from '@/stores/auth';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { ToastContainer } from '@/components/common/ToastContainer';
+import { GlobalSearch } from '@/components/common/GlobalSearch';
 
 const Landing = lazy(() => import('@/pages/Landing'));
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
@@ -48,6 +49,7 @@ const WalletTracker = lazy(() => import('@/pages/WalletTracker'));
 const TaxReport = lazy(() => import('@/pages/TaxReport'));
 const Admin = lazy(() => import('@/pages/Admin'));
 const Options = lazy(() => import('@/pages/Options'));
+const IndicatorLibrary = lazy(() => import('@/pages/IndicatorLibrary'));
 const Status = lazy(() => import('@/pages/Status'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
@@ -70,13 +72,35 @@ const HomeGate: React.FC = () => {
 
 const App: React.FC = () => {
   const loadUser = useAuthStore((s) => s.loadUser);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   useEffect(() => {
     loadUser();
   }, [loadUser]);
 
+  // Ctrl+K / Cmd+K to open global search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  const openSearch = useCallback(() => setSearchOpen(true), []);
+  const closeSearch = useCallback(() => setSearchOpen(false), []);
+
   // Connect WebSocket for live ticker updates
   useWebSocket();
+
+  // Expose openSearch on window for Header to call
+  useEffect(() => {
+    (window as any).__quantisOpenSearch = openSearch;
+    return () => { delete (window as any).__quantisOpenSearch; };
+  }, [openSearch]);
 
   return (
     <>
@@ -131,6 +155,7 @@ const App: React.FC = () => {
             <Route path="/wallet-tracker" element={<WalletTracker />} />
             <Route path="/tax-report" element={<TaxReport />} />
             <Route path="/options" element={<Options />} />
+            <Route path="/indicators" element={<IndicatorLibrary />} />
             <Route path="/admin" element={<Admin />} />
           </Route>
 
@@ -139,6 +164,7 @@ const App: React.FC = () => {
         </Routes>
       </Suspense>
       <ToastContainer />
+      <GlobalSearch isOpen={searchOpen} onClose={closeSearch} />
     </>
   );
 };

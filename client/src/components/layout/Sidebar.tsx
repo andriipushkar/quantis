@@ -41,6 +41,7 @@ import {
   Wallet2,
   FileText,
   BarChart2,
+  BookMarked,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -98,6 +99,7 @@ const navItems: NavItem[] = [
   { icon: Activity, labelKey: 'nav.marketBreadth', path: '/market-breadth' },
   { icon: BarChart3, labelKey: 'nav.openInterest', path: '/open-interest' },
   { icon: BarChart2, labelKey: 'nav.options', path: '/options' },
+  { icon: BookMarked, labelKey: 'nav.indicatorLibrary', path: '/indicators' },
   { icon: Bot, labelKey: 'nav.copilot', path: '/copilot' },
   { icon: Signal, labelKey: 'nav.signals', path: '/signals', badge: true },
   { icon: CircleDollarSign, labelKey: 'nav.paperTrading', path: '/paper-trading' },

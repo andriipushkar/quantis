@@ -1,11 +1,12 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Bell, Globe, Moon, Search, Sun, User } from 'lucide-react';
+import { Globe, Moon, Search, Sun, User } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { useMarketStore } from '@/stores/market';
 import { useAuthStore } from '@/stores/auth';
 import { useThemeStore } from '@/stores/theme';
+import { NotificationCenter } from '@/components/common/NotificationCenter';
 
 export const Header: React.FC = () => {
   const { t, i18n } = useTranslation();
@@ -49,16 +50,18 @@ export const Header: React.FC = () => {
         </Link>
       </div>
 
-      {/* Center: Search */}
+      {/* Center: Search (opens GlobalSearch modal) */}
       <div className="hidden md:flex flex-1 max-w-md mx-4">
-        <div className="relative w-full">
+        <button
+          onClick={() => (window as any).__quantisOpenSearch?.()}
+          className="relative w-full h-9 pl-9 pr-4 bg-secondary border border-border rounded-lg text-sm text-muted-foreground text-left hover:border-primary/30 focus:outline-none focus:ring-1 focus:ring-ring focus:border-primary transition-all"
+        >
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder={t('common.search')}
-            className="w-full h-9 pl-9 pr-4 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring focus:border-primary transition-all"
-          />
-        </div>
+          <span>{t('common.search')}</span>
+          <kbd className="absolute right-3 top-1/2 -translate-y-1/2 hidden lg:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] text-muted-foreground bg-background/50 rounded border border-border font-mono">
+            Ctrl+K
+          </kbd>
+        </button>
       </div>
 
       {/* Right: Actions */}
@@ -79,10 +82,7 @@ export const Header: React.FC = () => {
           <Globe className="w-4 h-4" />
         </button>
 
-        <button className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all relative">
-          <Bell className="w-4 h-4" />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-danger rounded-full" />
-        </button>
+        <NotificationCenter />
 
         {isAuthenticated ? (
           <div className="flex items-center gap-2 pl-2 border-l border-border">
