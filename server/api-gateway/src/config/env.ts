@@ -152,6 +152,10 @@ function validateEnv() {
   const OKX_API_URL = optional('OKX_API_URL', 'https://www.okx.com');
   const OKX_WS_URL = optional('OKX_WS_URL', 'wss://ws.okx.com:8443');
 
+  // -- Google OAuth --
+  const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || undefined;
+  const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || undefined;
+
   // -- Encryption --
   const API_KEY_ENCRYPTION_KEY = process.env.API_KEY_ENCRYPTION_KEY || undefined;
 
@@ -223,6 +227,10 @@ function validateEnv() {
     BYBIT_WS_URL,
     OKX_API_URL,
     OKX_WS_URL,
+
+    // Google OAuth
+    GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET,
 
     // Encryption
     API_KEY_ENCRYPTION_KEY,

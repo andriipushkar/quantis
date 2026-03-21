@@ -167,6 +167,14 @@ export async function register(payload: { email: string; password: string }) {
   return { user: res.data.user, token: res.data.accessToken };
 }
 
+export async function googleLogin(payload: { credential?: string; code?: string }) {
+  const res = await api.post<{ success: boolean; data: { user: User; accessToken: string; refreshToken: string } }>(
+    '/auth/google', payload
+  );
+  setToken(res.data.accessToken);
+  return { user: res.data.user, token: res.data.accessToken };
+}
+
 export async function logout() {
   try { await api.post('/auth/logout'); } catch { /* ignore */ }
   clearToken();

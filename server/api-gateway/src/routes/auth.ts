@@ -128,6 +128,13 @@ router.post('/login', async (req: AuthenticatedRequest, res: Response) => {
     }
 
     const user = result.rows[0];
+
+    // OAuth-only users cannot login with password
+    if (!user.password_hash) {
+      res.status(401).json({ success: false, error: 'This account uses Google Sign-In. Please login with Google.' });
+      return;
+    }
+
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
       res.status(401).json({ success: false, error: 'Invalid credentials' });
@@ -282,6 +289,11 @@ router.post('/change-password', authenticate, async (req: AuthenticatedRequest, 
       return;
     }
 
+    if (!result.rows[0].password_hash) {
+      res.status(400).json({ success: false, error: 'Cannot change password for Google Sign-In accounts. Set a password first.' });
+      return;
+    }
+
     const valid = await bcrypt.compare(oldPassword, result.rows[0].password_hash);
     if (!valid) {
       res.status(401).json({ success: false, error: 'Current password is incorrect' });
@@ -300,6 +312,185 @@ router.post('/change-password', authenticate, async (req: AuthenticatedRequest, 
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
+
+// POST /google — Google OAuth login/register
+router.post('/google', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {
+      res.status(501).json({ success: false, error: 'Google OAuth is not configured' });
+      return;
+    }
+
+    const { code, credential } = req.body;
+
+    let googleUser: { sub: string; email: string; name?: string; picture?: string };
+
+    if (credential) {
+      // ID token flow (Google Identity Services / One Tap)
+      const payload = await verifyGoogleIdToken(credential);
+      if (!payload) {
+        res.status(401).json({ success: false, error: 'Invalid Google credential' });
+        return;
+      }
+      googleUser = payload;
+    } else if (code) {
+      // Authorization code flow
+      const tokens = await exchangeGoogleCode(code);
+      if (!tokens) {
+        res.status(401).json({ success: false, error: 'Invalid Google authorization code' });
+        return;
+      }
+      googleUser = tokens;
+    } else {
+      res.status(400).json({ success: false, error: 'Google credential or authorization code required' });
+      return;
+    }
+
+    // Check if user exists by google_id
+    let userResult = await query(
+      'SELECT id, email, tier FROM users WHERE google_id = $1',
+      [googleUser.sub]
+    );
+
+    if (userResult.rows.length === 0) {
+      // Check if email already registered (link accounts)
+      userResult = await query(
+        'SELECT id, email, tier FROM users WHERE email = $1',
+        [googleUser.email]
+      );
+
+      if (userResult.rows.length > 0) {
+        // Link Google ID to existing account
+        await query(
+          `UPDATE users SET google_id = $1, auth_provider = 'google',
+             avatar_url = COALESCE(avatar_url, $2), updated_at = NOW()
+           WHERE id = $3`,
+          [googleUser.sub, googleUser.picture || null, userResult.rows[0].id]
+        );
+      } else {
+        // Create new user (no password for OAuth users)
+        userResult = await query(
+          `INSERT INTO users (email, google_id, auth_provider, avatar_url)
+           VALUES ($1, $2, 'google', $3)
+           RETURNING id, email, tier`,
+          [googleUser.email, googleUser.sub, googleUser.picture || null]
+        );
+
+        const newUser = userResult.rows[0];
+
+        // Create profile
+        const displayName = googleUser.name || googleUser.email.split('@')[0];
+        const referralCode = newUser.id.split('-')[0].toUpperCase();
+        await query(
+          'INSERT INTO user_profiles (user_id, display_name, referral_code) VALUES ($1, $2, $3)',
+          [newUser.id, displayName, referralCode]
+        );
+      }
+    }
+
+    const user = userResult.rows[0];
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: env.isProduction,
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        user: { id: user.id, email: user.email, tier: user.tier },
+        accessToken,
+        refreshToken,
+      },
+    });
+  } catch (err) {
+    logger.error('Google OAuth error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+/**
+ * Verify a Google ID token (from Identity Services / One Tap).
+ * Uses Google's tokeninfo endpoint for simplicity (no extra dependencies).
+ */
+async function verifyGoogleIdToken(
+  idToken: string
+): Promise<{ sub: string; email: string; name?: string; picture?: string } | null> {
+  try {
+    const response = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`
+    );
+    if (!response.ok) return null;
+
+    const payload = (await response.json()) as {
+      sub: string;
+      email: string;
+      email_verified: string;
+      name?: string;
+      picture?: string;
+      aud: string;
+    };
+
+    // Verify audience matches our client ID
+    if (payload.aud !== env.GOOGLE_CLIENT_ID) return null;
+    if (payload.email_verified !== 'true') return null;
+
+    return { sub: payload.sub, email: payload.email, name: payload.name, picture: payload.picture };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Exchange a Google authorization code for user info.
+ */
+async function exchangeGoogleCode(
+  code: string
+): Promise<{ sub: string; email: string; name?: string; picture?: string } | null> {
+  try {
+    // Exchange code for tokens
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code,
+        client_id: env.GOOGLE_CLIENT_ID,
+        client_secret: env.GOOGLE_CLIENT_SECRET,
+        redirect_uri: `${env.APP_URL}/auth/google/callback`,
+        grant_type: 'authorization_code',
+      }),
+    });
+
+    if (!tokenResponse.ok) return null;
+
+    const tokens = (await tokenResponse.json()) as { access_token: string; id_token?: string };
+
+    // Get user info with access token
+    const userResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+
+    if (!userResponse.ok) return null;
+
+    const userInfo = (await userResponse.json()) as {
+      id: string;
+      email: string;
+      name?: string;
+      picture?: string;
+      verified_email: boolean;
+    };
+
+    if (!userInfo.verified_email) return null;
+
+    return { sub: userInfo.id, email: userInfo.email, name: userInfo.name, picture: userInfo.picture };
+  } catch {
+    return null;
+  }
+}
 
 // POST /2fa/setup — Generate TOTP secret
 router.post('/2fa/setup', authenticate, async (req: AuthenticatedRequest, res: Response) => {

@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/common/Card';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { useAuthStore } from '@/stores/auth';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 
 const OnboardingWizard = lazy(() => import('@/components/common/OnboardingWizard'));
 
@@ -115,6 +116,19 @@ const Register: React.FC = () => {
                 {t('auth.register')}
               </Button>
             </form>
+
+            {/* Divider */}
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-border" />
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="bg-card px-2 text-muted-foreground">{t('auth.or', 'or')}</span>
+              </div>
+            </div>
+
+            {/* Google Sign-Up */}
+            <GoogleSignInButton text="signup_with" />
 
             <div className="mt-6 text-center">
               <span className="text-sm text-muted-foreground">

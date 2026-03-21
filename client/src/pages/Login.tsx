@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/common/Card';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { useAuthStore } from '@/stores/auth';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 
 const loginSchema = z.object({
   email: z.string().min(1, 'emailRequired').email('invalidEmail'),
@@ -93,6 +94,19 @@ const Login: React.FC = () => {
                 {t('auth.login')}
               </Button>
             </form>
+
+            {/* Divider */}
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-border" />
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="bg-card px-2 text-muted-foreground">{t('auth.or', 'or')}</span>
+              </div>
+            </div>
+
+            {/* Google Sign-In */}
+            <GoogleSignInButton text="signin_with" />
 
             <div className="mt-6 text-center">
               <span className="text-sm text-muted-foreground">
