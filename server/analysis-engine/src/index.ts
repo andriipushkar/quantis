@@ -2,9 +2,11 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import express from 'express';
+import Bull from 'bull';
 import logger from './config/logger.js';
 import pool from './config/database.js';
 import { publisherClient } from './config/redis.js';
+import calculator from './indicators/calculator.js';
 
 const PORT = parseInt(process.env.PORT || '3003', 10);
 const app = express();
@@ -23,51 +25,109 @@ interface CandleRow {
   symbol: string;
 }
 
-function calculateRSI(closes: number[], period: number): number[] {
-  if (closes.length < period + 1) return [];
-  const rsi: number[] = [];
-  let avgGain = 0, avgLoss = 0;
-  for (let i = 1; i <= period; i++) {
-    const d = closes[i] - closes[i - 1];
-    if (d > 0) avgGain += d; else avgLoss += Math.abs(d);
-  }
-  avgGain /= period; avgLoss /= period;
-  rsi.push(avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss));
-  for (let i = period + 1; i < closes.length; i++) {
-    const d = closes[i] - closes[i - 1];
-    avgGain = (avgGain * (period - 1) + (d > 0 ? d : 0)) / period;
-    avgLoss = (avgLoss * (period - 1) + (d < 0 ? Math.abs(d) : 0)) / period;
-    rsi.push(avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss));
-  }
-  return rsi;
-}
+// ── Bull Queue for Parallel Pair Analysis ────────────────────────────
 
-function calculateEMA(data: number[], period: number): number[] {
-  if (data.length < period) return [];
-  const k = 2 / (period + 1);
-  const ema: number[] = [];
-  let sum = 0;
-  for (let i = 0; i < period; i++) sum += data[i];
-  ema.push(sum / period);
-  for (let i = period; i < data.length; i++) ema.push(data[i] * k + ema[ema.length - 1] * (1 - k));
-  return ema;
-}
+export const analysisQueue = new Bull('pair-analysis', {
+  redis: {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379', 10),
+    password: process.env.REDIS_PASSWORD || undefined,
+    db: parseInt(process.env.REDIS_DB || '0', 10),
+  },
+  defaultJobOptions: {
+    removeOnComplete: 100,
+    removeOnFail: 500,
+    attempts: 2,
+    backoff: {
+      type: 'exponential',
+      delay: 3000,
+    },
+  },
+});
 
-function calculateATR(highs: number[], lows: number[], closes: number[], period: number): number[] {
-  if (highs.length < period + 1) return [];
-  const tr: number[] = [];
-  for (let i = 1; i < highs.length; i++) {
-    tr.push(Math.max(highs[i] - lows[i], Math.abs(highs[i] - closes[i - 1]), Math.abs(lows[i] - closes[i - 1])));
+// Process analysis jobs — concurrency of 5
+analysisQueue.process('analyze-pair', 5, async (job) => {
+  const pair = job.data;
+  logger.debug('Processing pair analysis', { symbol: pair.symbol, jobId: job.id });
+
+  // Get last 100 1m candles
+  const candlesResult = await pool.query(
+    `SELECT time, open, high, low, close, volume FROM ohlcv_1m
+     WHERE pair_id = $1 ORDER BY time DESC LIMIT 100`,
+    [pair.id]
+  );
+
+  if (candlesResult.rows.length < 30) return;
+
+  const candles = candlesResult.rows.reverse();
+  const closes = candles.map((c: CandleRow) => parseFloat(c.close));
+  const highs = candles.map((c: CandleRow) => parseFloat(c.high));
+  const lows = candles.map((c: CandleRow) => parseFloat(c.low));
+  const volumes = candles.map((c: CandleRow) => parseFloat(c.volume));
+
+  const rsi = calculator.calculateRSI(closes, 14);
+  const ema9 = calculator.calculateEMA(closes, 9);
+  const ema21 = calculator.calculateEMA(closes, 21);
+  const atr = calculator.calculateATR(highs, lows, closes, 14);
+
+  if (rsi.length === 0 || ema9.length === 0 || ema21.length === 0 || atr.length === 0) return;
+
+  const currentRSI = rsi[rsi.length - 1];
+  const currentEMA9 = ema9[ema9.length - 1];
+  const currentEMA21 = ema21[ema21.length - 1];
+  const prevEMA9 = ema9.length > 1 ? ema9[ema9.length - 2] : currentEMA9;
+  const prevEMA21 = ema21.length > 1 ? ema21[ema21.length - 2] : currentEMA21;
+  const currentATR = atr[atr.length - 1];
+  const currentPrice = closes[closes.length - 1];
+  const avgVolume = volumes.slice(-20).reduce((s, v) => s + v, 0) / 20;
+  const currentVolume = volumes[volumes.length - 1];
+
+  // Check if there's already an active signal for this pair
+  const existing = await pool.query(
+    `SELECT id FROM signals WHERE pair_id = $1 AND status = 'active' LIMIT 1`,
+    [pair.id]
+  );
+  if (existing.rows.length > 0) return;
+
+  // Strategy 1: Trend Following — EMA crossover + RSI confirmation
+  const emaCrossUp = prevEMA9 <= prevEMA21 && currentEMA9 > currentEMA21;
+  const emaCrossDown = prevEMA9 >= prevEMA21 && currentEMA9 < currentEMA21;
+  const volumeSurge = currentVolume > avgVolume * 1.3;
+
+  if (emaCrossUp && currentRSI > 45 && currentRSI < 75 && volumeSurge) {
+    await createSignal(pair, 'buy', 'trend_following', currentPrice, currentATR, currentRSI);
+    return;
   }
-  const atr: number[] = [];
-  let sum = 0;
-  for (let i = 0; i < period; i++) sum += tr[i];
-  atr.push(sum / period);
-  for (let i = period; i < tr.length; i++) atr.push((atr[atr.length - 1] * (period - 1) + tr[i]) / period);
-  return atr;
-}
+  if (emaCrossDown && currentRSI < 55 && currentRSI > 25 && volumeSurge) {
+    await createSignal(pair, 'sell', 'trend_following', currentPrice, currentATR, currentRSI);
+    return;
+  }
 
-async function analyzeAndGenerateSignals(): Promise<void> {
+  // Strategy 2: Mean Reversion — RSI extremes
+  if (currentRSI < 25) {
+    await createSignal(pair, 'buy', 'mean_reversion', currentPrice, currentATR, currentRSI);
+    return;
+  }
+  if (currentRSI > 75) {
+    await createSignal(pair, 'sell', 'mean_reversion', currentPrice, currentATR, currentRSI);
+    return;
+  }
+});
+
+analysisQueue.on('failed', (job, err) => {
+  logger.error('Pair analysis job failed', {
+    jobId: job.id,
+    symbol: job.data.symbol,
+    error: err.message,
+    attempts: job.attemptsMade,
+  });
+});
+
+analysisQueue.on('completed', (job) => {
+  logger.debug('Pair analysis job completed', { jobId: job.id, symbol: job.data.symbol });
+});
+
+async function enqueueAnalysisJobs(): Promise<void> {
   try {
     // Get all active pairs
     const pairsResult = await pool.query(
@@ -75,75 +135,16 @@ async function analyzeAndGenerateSignals(): Promise<void> {
     );
 
     for (const pair of pairsResult.rows) {
-      try {
-        // Get last 100 1m candles
-        const candlesResult = await pool.query(
-          `SELECT time, open, high, low, close, volume FROM ohlcv_1m
-           WHERE pair_id = $1 ORDER BY time DESC LIMIT 100`,
-          [pair.id]
-        );
-
-        if (candlesResult.rows.length < 30) continue;
-
-        const candles = candlesResult.rows.reverse();
-        const closes = candles.map((c: CandleRow) => parseFloat(c.close));
-        const highs = candles.map((c: CandleRow) => parseFloat(c.high));
-        const lows = candles.map((c: CandleRow) => parseFloat(c.low));
-        const volumes = candles.map((c: CandleRow) => parseFloat(c.volume));
-
-        const rsi = calculateRSI(closes, 14);
-        const ema9 = calculateEMA(closes, 9);
-        const ema21 = calculateEMA(closes, 21);
-        const atr = calculateATR(highs, lows, closes, 14);
-
-        if (rsi.length === 0 || ema9.length === 0 || ema21.length === 0 || atr.length === 0) continue;
-
-        const currentRSI = rsi[rsi.length - 1];
-        const currentEMA9 = ema9[ema9.length - 1];
-        const currentEMA21 = ema21[ema21.length - 1];
-        const prevEMA9 = ema9.length > 1 ? ema9[ema9.length - 2] : currentEMA9;
-        const prevEMA21 = ema21.length > 1 ? ema21[ema21.length - 2] : currentEMA21;
-        const currentATR = atr[atr.length - 1];
-        const currentPrice = closes[closes.length - 1];
-        const avgVolume = volumes.slice(-20).reduce((s, v) => s + v, 0) / 20;
-        const currentVolume = volumes[volumes.length - 1];
-
-        // Check if there's already an active signal for this pair
-        const existing = await pool.query(
-          `SELECT id FROM signals WHERE pair_id = $1 AND status = 'active' LIMIT 1`,
-          [pair.id]
-        );
-        if (existing.rows.length > 0) continue;
-
-        // Strategy 1: Trend Following — EMA crossover + RSI confirmation
-        const emaCrossUp = prevEMA9 <= prevEMA21 && currentEMA9 > currentEMA21;
-        const emaCrossDown = prevEMA9 >= prevEMA21 && currentEMA9 < currentEMA21;
-        const volumeSurge = currentVolume > avgVolume * 1.3;
-
-        if (emaCrossUp && currentRSI > 45 && currentRSI < 75 && volumeSurge) {
-          await createSignal(pair, 'buy', 'trend_following', currentPrice, currentATR, currentRSI);
-          continue;
-        }
-        if (emaCrossDown && currentRSI < 55 && currentRSI > 25 && volumeSurge) {
-          await createSignal(pair, 'sell', 'trend_following', currentPrice, currentATR, currentRSI);
-          continue;
-        }
-
-        // Strategy 2: Mean Reversion — RSI extremes
-        if (currentRSI < 25) {
-          await createSignal(pair, 'buy', 'mean_reversion', currentPrice, currentATR, currentRSI);
-          continue;
-        }
-        if (currentRSI > 75) {
-          await createSignal(pair, 'sell', 'mean_reversion', currentPrice, currentATR, currentRSI);
-          continue;
-        }
-      } catch (err) {
-        logger.error('Error analyzing pair', { pair: pair.symbol, error: (err as Error).message });
-      }
+      await analysisQueue.add('analyze-pair', {
+        id: pair.id,
+        symbol: pair.symbol,
+        exchange_id: pair.exchange_id,
+      });
     }
+
+    logger.info(`Enqueued ${pairsResult.rows.length} pair analysis jobs`);
   } catch (err) {
-    logger.error('Signal generation error', { error: (err as Error).message });
+    logger.error('Failed to enqueue analysis jobs', { error: (err as Error).message });
   }
 }
 
@@ -233,10 +234,10 @@ async function start(): Promise<void> {
       logger.info(`Analysis engine listening on port ${PORT}`);
     });
 
-    // Run analysis every 60 seconds
+    // Run analysis every 60 seconds via Bull queue
     logger.info('Starting signal analysis loop (every 60s)');
-    analyzeAndGenerateSignals(); // run immediately
-    setInterval(analyzeAndGenerateSignals, 60_000);
+    enqueueAnalysisJobs(); // run immediately
+    setInterval(enqueueAnalysisJobs, 60_000);
 
     logger.info('Analysis engine started successfully');
   } catch (error) {
@@ -245,7 +246,21 @@ async function start(): Promise<void> {
   }
 }
 
-process.on('SIGTERM', () => { logger.info('SIGTERM received'); process.exit(0); });
-process.on('SIGINT', () => { logger.info('SIGINT received'); process.exit(0); });
+async function shutdown(signal: string): Promise<void> {
+  logger.info(`${signal} received, shutting down gracefully`);
+  try {
+    await analysisQueue.close();
+    logger.info('Analysis queue closed');
+    await pool.end();
+    logger.info('Database pool closed');
+    process.exit(0);
+  } catch (error) {
+    logger.error('Error during shutdown', { error: (error as Error).message });
+    process.exit(1);
+  }
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 start();

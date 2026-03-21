@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { env } from '../config/env.js';
 import logger from '../config/logger.js';
 
 export interface AuthUser {
@@ -21,14 +22,7 @@ export function authenticate(req: AuthenticatedRequest, res: Response, next: Nex
     }
 
     const token = authHeader.substring(7);
-    const secret = process.env.JWT_ACCESS_SECRET;
-    if (!secret) {
-      logger.error('JWT_ACCESS_SECRET is not configured');
-      res.status(500).json({ error: 'Internal server error' });
-      return;
-    }
-
-    const decoded = jwt.verify(token, secret) as AuthUser;
+    const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET) as AuthUser;
     req.user = {
       id: decoded.id,
       email: decoded.email,

@@ -23,7 +23,7 @@
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "docker:build": "docker compose build",
-    "test": "npm -w server/analysis-engine run test && npm -w client run test",
+    "test": "npm -w shared run test && npm -w server/analysis-engine run test && npm -w server/data-collector run test && npm -w server/alert-service run test && npm -w client run test",
     "test:integration": "npm -w server/api-gateway run test",
     "test:e2e": "npx playwright test"
   },

@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+import { env } from '../config/env.js';
 import { query } from '../config/database.js';
 import logger from '../config/logger.js';
 import { authenticate, AuthenticatedRequest, AuthUser } from '../middleware/auth.js';
@@ -35,15 +36,19 @@ function toBase32(buffer: Buffer): string {
 const router = Router();
 
 function generateAccessToken(user: { id: string; email: string; tier: string }): string {
-  const secret = process.env.JWT_ACCESS_SECRET!;
-  const expiresIn = process.env.JWT_ACCESS_EXPIRY || '15m';
-  return jwt.sign({ id: user.id, email: user.email, tier: user.tier }, secret, { expiresIn });
+  return jwt.sign(
+    { id: user.id, email: user.email, tier: user.tier },
+    env.JWT_ACCESS_SECRET,
+    { expiresIn: env.JWT_ACCESS_EXPIRY },
+  );
 }
 
 function generateRefreshToken(user: { id: string; email: string; tier: string }): string {
-  const secret = process.env.JWT_REFRESH_SECRET!;
-  const expiresIn = process.env.JWT_REFRESH_EXPIRY || '7d';
-  return jwt.sign({ id: user.id, email: user.email, tier: user.tier }, secret, { expiresIn });
+  return jwt.sign(
+    { id: user.id, email: user.email, tier: user.tier },
+    env.JWT_REFRESH_SECRET,
+    { expiresIn: env.JWT_REFRESH_EXPIRY },
+  );
 }
 
 // POST /register
@@ -63,7 +68,7 @@ router.post('/register', async (req: AuthenticatedRequest, res: Response) => {
       return;
     }
 
-    const passwordHash = await bcrypt.hash(password, parseInt(process.env.BCRYPT_ROUNDS || '12'));
+    const passwordHash = await bcrypt.hash(password, env.BCRYPT_ROUNDS);
 
     const userResult = await query(
       'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, tier',
@@ -83,7 +88,7 @@ router.post('/register', async (req: AuthenticatedRequest, res: Response) => {
 
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: env.isProduction,
       sameSite: 'strict',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
@@ -134,7 +139,7 @@ router.post('/login', async (req: AuthenticatedRequest, res: Response) => {
 
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: env.isProduction,
       sameSite: 'strict',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
@@ -162,15 +167,9 @@ router.post('/refresh', async (req: AuthenticatedRequest, res: Response) => {
       return;
     }
 
-    const secret = process.env.JWT_REFRESH_SECRET;
-    if (!secret) {
-      res.status(500).json({ success: false, error: 'Internal server error' });
-      return;
-    }
-
     let decoded: AuthUser;
     try {
-      decoded = jwt.verify(token, secret) as AuthUser;
+      decoded = jwt.verify(token, env.JWT_REFRESH_SECRET) as AuthUser;
     } catch {
       res.status(401).json({ success: false, error: 'Invalid refresh token' });
       return;
@@ -191,7 +190,7 @@ router.post('/refresh', async (req: AuthenticatedRequest, res: Response) => {
 
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: env.isProduction,
       sameSite: 'strict',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
@@ -289,7 +288,7 @@ router.post('/change-password', authenticate, async (req: AuthenticatedRequest, 
       return;
     }
 
-    const newHash = await bcrypt.hash(newPassword, parseInt(process.env.BCRYPT_ROUNDS || '12'));
+    const newHash = await bcrypt.hash(newPassword, env.BCRYPT_ROUNDS);
     await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [
       newHash,
       req.user!.id,

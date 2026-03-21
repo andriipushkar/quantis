@@ -1,5 +1,4 @@
-import dotenv from 'dotenv';
-dotenv.config();
+import { env } from './config/env.js';
 
 import express from 'express';
 import http from 'http';
@@ -45,12 +44,8 @@ const app = express();
 const server = http.createServer(app);
 
 // CORS configuration
-const corsOrigins = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim())
-  : ['http://localhost:3000'];
-
 const corsOptions: cors.CorsOptions = {
-  origin: corsOrigins,
+  origin: env.CORS_ORIGINS,
   credentials: true,
 };
 
@@ -142,9 +137,9 @@ io.on('connection', (socket) => {
 
 // Redis subscriber to relay real-time data to Socket.IO clients
 const redisSub = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379', 10),
-  password: process.env.REDIS_PASSWORD || undefined,
+  host: env.REDIS_HOST,
+  port: env.REDIS_PORT,
+  password: env.REDIS_PASSWORD,
   maxRetriesPerRequest: null,
 });
 
@@ -177,10 +172,8 @@ redisSub.on('message', (channel, message) => {
 });
 
 // Start server
-const PORT = parseInt(process.env.APP_PORT || '3001', 10);
-
-server.listen(PORT, () => {
-  logger.info(`API Gateway listening on port ${PORT}`);
+server.listen(env.APP_PORT, () => {
+  logger.info(`API Gateway listening on port ${env.APP_PORT}`);
 });
 
 // Graceful shutdown

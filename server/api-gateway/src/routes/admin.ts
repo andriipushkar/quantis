@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import { query } from '../config/database.js';
+import { env } from '../config/env.js';
 import logger from '../config/logger.js';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
 import Redis from 'ioredis';
@@ -8,7 +9,7 @@ const router = Router();
 
 // Admin check middleware
 function requireAdmin(req: AuthenticatedRequest, res: Response, next: () => void): void {
-  const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map((e) => e.trim().toLowerCase());
+  const adminEmails = env.ADMIN_EMAILS;
   if (!req.user || !adminEmails.includes(req.user.email.toLowerCase())) {
     res.status(403).json({ success: false, error: 'Admin access required' });
     return;
@@ -110,9 +111,9 @@ router.get('/system', async (_req: AuthenticatedRequest, res: Response) => {
     let redisStatus = 'ok';
     try {
       const redis = new Redis({
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379', 10),
-        password: process.env.REDIS_PASSWORD || undefined,
+        host: env.REDIS_HOST,
+        port: env.REDIS_PORT,
+        password: env.REDIS_PASSWORD,
         maxRetriesPerRequest: 1,
         connectTimeout: 3000,
       });

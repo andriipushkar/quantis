@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import { query } from '../config/database.js';
+import { env } from '../config/env.js';
 import logger from '../config/logger.js';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
 
@@ -52,7 +53,7 @@ router.get('/', authenticate, async (req: AuthenticatedRequest, res: Response) =
       // referrals table may not exist yet — return zeros
     }
 
-    const baseUrl = process.env.APP_URL || 'https://quantis.trade';
+    const baseUrl = env.APP_URL;
     const referralLink = referralCode ? `${baseUrl}/register?ref=${referralCode}` : null;
 
     res.json({

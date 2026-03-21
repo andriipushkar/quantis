@@ -1,14 +1,12 @@
-import dotenv from 'dotenv';
-dotenv.config();
-
+import { env } from './env.js';
 import Redis from 'ioredis';
 import logger from './logger.js';
 
 const redis = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379', 10),
-  password: process.env.REDIS_PASSWORD || undefined,
-  db: parseInt(process.env.REDIS_DB || '0', 10),
+  host: env.REDIS_HOST,
+  port: env.REDIS_PORT,
+  password: env.REDIS_PASSWORD,
+  db: env.REDIS_DB,
   maxRetriesPerRequest: 3,
   retryStrategy(times: number) {
     const delay = Math.min(times * 200, 5000);

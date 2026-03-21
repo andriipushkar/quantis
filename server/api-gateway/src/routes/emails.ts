@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
+import { env } from '../config/env.js';
 import {
   welcomeEmail,
   signalAlertEmail,
@@ -13,7 +14,7 @@ const router = Router();
 
 // Admin check middleware
 function requireAdmin(req: AuthenticatedRequest, res: Response, next: () => void): void {
-  const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map((e) => e.trim().toLowerCase());
+  const adminEmails = env.ADMIN_EMAILS;
   if (!req.user || !adminEmails.includes(req.user.email.toLowerCase())) {
     res.status(403).json({ success: false, error: 'Admin access required' });
     return;
@@ -85,7 +86,7 @@ router.post('/send-test', (req: AuthenticatedRequest, res: Response) => {
     }
 
     // Check if SMTP is configured
-    if (!process.env.SMTP_HOST || !process.env.SMTP_USER) {
+    if (!env.SMTP_HOST || !env.SMTP_USER) {
       res.status(503).json({
         success: false,
         error: 'SMTP not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS environment variables.',

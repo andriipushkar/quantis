@@ -7,6 +7,8 @@ module.exports = {
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },
   transform: {
-    '^.+\\.tsx?$': ['ts-jest', { isolatedModules: true }],
+    '^.+\\.ts$': ['ts-jest', {
+      diagnostics: false,
+    }],
   },
 };

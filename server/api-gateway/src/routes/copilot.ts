@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import { query } from '../config/database.js';
+import { env } from '../config/env.js';
 import redis from '../config/redis.js';
 import logger from '../config/logger.js';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
@@ -177,20 +178,19 @@ router.post('/ask', authenticate, validateBody(copilotSchema), async (req: Authe
 
     let answer: string;
 
-    if (process.env.ANTHROPIC_API_KEY) {
+    if (env.ANTHROPIC_API_KEY) {
       // Call Claude API
       try {
-        const model = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
         const response = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-api-key': process.env.ANTHROPIC_API_KEY,
+            'x-api-key': env.ANTHROPIC_API_KEY,
             'anthropic-version': '2023-06-01',
           },
           body: JSON.stringify({
-            model,
-            max_tokens: 1024,
+            model: env.ANTHROPIC_MODEL,
+            max_tokens: env.COPILOT_MAX_TOKENS,
             system: 'You are a professional crypto technical analyst for Quantis platform. Analyze based on the provided data. Be concise. Never give financial advice. Include confidence level.',
             messages: [
               {

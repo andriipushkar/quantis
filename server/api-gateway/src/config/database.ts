@@ -1,17 +1,16 @@
-import dotenv from 'dotenv';
-dotenv.config();
-
+import { env } from './env.js';
 import { Pool, QueryResult } from 'pg';
 import logger from './logger.js';
 
 const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432', 10),
-  database: process.env.DB_NAME || 'quantis',
-  user: process.env.DB_USER || 'quantis',
-  password: process.env.DB_PASSWORD || 'quantis',
-  min: parseInt(process.env.DB_POOL_MIN || '2', 10),
-  max: parseInt(process.env.DB_POOL_MAX || '10', 10),
+  host: env.DB_HOST,
+  port: env.DB_PORT,
+  database: env.DB_NAME,
+  user: env.DB_USER,
+  password: env.DB_PASSWORD,
+  min: env.DB_POOL_MIN,
+  max: env.DB_POOL_MAX,
+  ssl: env.DB_SSL ? { rejectUnauthorized: false } : undefined,
 });
 
 pool.on('error', (err) => {
