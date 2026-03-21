@@ -700,237 +700,385 @@ router.get('/ticker/:symbol', async (req: Request, res: Response) => {
   }
 });
 
-// GET /regime — Market regime classifier (BTCUSDT reference)
+// ── Regime Scoring Helpers ──────────────────────────────────────────────
+
+interface ADXResult { adx: number; plusDI: number; minusDI: number; }
+
+function computeADX(highs: number[], lows: number[], closes: number[], period = 14): ADXResult {
+  const len = Math.min(highs.length, lows.length, closes.length);
+  if (len < 2 * period + 1) return { adx: 20, plusDI: 0, minusDI: 0 };
+
+  const tr: number[] = [], plusDM: number[] = [], minusDM: number[] = [];
+  for (let i = 1; i < len; i++) {
+    tr.push(Math.max(highs[i] - lows[i], Math.abs(highs[i] - closes[i - 1]), Math.abs(lows[i] - closes[i - 1])));
+    const up = highs[i] - highs[i - 1], dn = lows[i - 1] - lows[i];
+    plusDM.push(up > dn && up > 0 ? up : 0);
+    minusDM.push(dn > up && dn > 0 ? dn : 0);
+  }
+
+  let sTR = 0, sPDM = 0, sMDM = 0;
+  for (let i = 0; i < period; i++) { sTR += tr[i]; sPDM += plusDM[i]; sMDM += minusDM[i]; }
+
+  const dxVals: number[] = [];
+  for (let i = period; i < tr.length; i++) {
+    sTR = sTR - sTR / period + tr[i];
+    sPDM = sPDM - sPDM / period + plusDM[i];
+    sMDM = sMDM - sMDM / period + minusDM[i];
+    const pdi = sTR > 0 ? (sPDM / sTR) * 100 : 0;
+    const mdi = sTR > 0 ? (sMDM / sTR) * 100 : 0;
+    const sum = pdi + mdi;
+    dxVals.push(sum > 0 ? (Math.abs(pdi - mdi) / sum) * 100 : 0);
+  }
+
+  if (dxVals.length < period) {
+    const avg = dxVals.reduce((a, b) => a + b, 0) / (dxVals.length || 1);
+    return { adx: avg, plusDI: 0, minusDI: 0 };
+  }
+
+  let adx = 0;
+  for (let i = 0; i < period; i++) adx += dxVals[i];
+  adx /= period;
+  for (let i = period; i < dxVals.length; i++) adx = (adx * (period - 1) + dxVals[i]) / period;
+
+  return { adx, plusDI: sTR > 0 ? (sPDM / sTR) * 100 : 0, minusDI: sTR > 0 ? (sMDM / sTR) * 100 : 0 };
+}
+
+function computeHurst(closes: number[]): number {
+  if (closes.length < 32) return 0.5;
+  const returns: number[] = [];
+  for (let i = 1; i < closes.length; i++) {
+    if (closes[i] > 0 && closes[i - 1] > 0) returns.push(Math.log(closes[i] / closes[i - 1]));
+  }
+  if (returns.length < 20) return 0.5;
+
+  const sizes: number[] = [];
+  let s = 8;
+  while (s <= returns.length / 2) { sizes.push(s); s *= 2; }
+  if (sizes.length < 2) return 0.5;
+
+  const logN: number[] = [], logRS: number[] = [];
+  for (const n of sizes) {
+    const num = Math.floor(returns.length / n);
+    let rsSum = 0;
+    for (let j = 0; j < num; j++) {
+      const sub = returns.slice(j * n, (j + 1) * n);
+      const mean = sub.reduce((a, b) => a + b, 0) / n;
+      const std = Math.sqrt(sub.reduce((a, v) => a + (v - mean) ** 2, 0) / n);
+      if (std === 0) continue;
+      let cum = 0, mx = -Infinity, mn = Infinity;
+      for (const val of sub) { cum += val - mean; if (cum > mx) mx = cum; if (cum < mn) mn = cum; }
+      rsSum += (mx - mn) / std;
+    }
+    if (num > 0 && rsSum > 0) { logN.push(Math.log(n)); logRS.push(Math.log(rsSum / num)); }
+  }
+  if (logN.length < 2) return 0.5;
+
+  const nP = logN.length;
+  const sX = logN.reduce((a, b) => a + b, 0), sY = logRS.reduce((a, b) => a + b, 0);
+  const sXY = logN.reduce((a, x, i) => a + x * logRS[i], 0);
+  const sX2 = logN.reduce((a, x) => a + x * x, 0);
+  const d = nP * sX2 - sX * sX;
+  if (d === 0) return 0.5;
+  return Math.max(0, Math.min(1, (nP * sXY - sX * sY) / d));
+}
+
+function computeChoppiness(highs: number[], lows: number[], closes: number[], period = 14): number {
+  const len = Math.min(highs.length, lows.length, closes.length);
+  if (len < period + 1) return 50;
+  const off = len - period - 1;
+  let atrSum = 0, hh = -Infinity, ll = Infinity;
+  for (let i = off + 1; i < len; i++) {
+    atrSum += Math.max(highs[i] - lows[i], Math.abs(highs[i] - closes[i - 1]), Math.abs(lows[i] - closes[i - 1]));
+    if (highs[i] > hh) hh = highs[i];
+    if (lows[i] < ll) ll = lows[i];
+  }
+  const range = hh - ll;
+  if (range <= 0 || atrSum <= 0) return 50;
+  return Math.max(0, Math.min(100, (100 * Math.log10(atrSum / range)) / Math.log10(period)));
+}
+
+function computeEfficiencyRatio(closes: number[], period = 10): number {
+  if (closes.length < period + 1) return 0.5;
+  const end = closes.length - 1, start = end - period;
+  const dir = Math.abs(closes[end] - closes[start]);
+  let vol = 0;
+  for (let i = start + 1; i <= end; i++) vol += Math.abs(closes[i] - closes[i - 1]);
+  return vol === 0 ? 0 : Math.min(1, dir / vol);
+}
+
+type RegimeLabel = 'strong_trend' | 'trending' | 'transitional' | 'choppy' | 'mean_reversion';
+type TrendDirection = 'bullish' | 'bearish' | 'neutral';
+
+interface RegimeScoreResult {
+  score: number;
+  label: RegimeLabel;
+  direction: TrendDirection;
+  confidence: number;
+  description: string;
+  components: {
+    adx: number; adxScore: number;
+    hurst: number; hurstScore: number;
+    choppiness: number; choppinessScore: number;
+    efficiencyRatio: number; erScore: number;
+  };
+  strategies: { recommended: string[]; avoid: string[] };
+}
+
+function computeRegimeScore(highs: number[], lows: number[], closes: number[]): RegimeScoreResult {
+  const adxR = computeADX(highs, lows, closes);
+  const hurst = computeHurst(closes);
+  const ci = computeChoppiness(highs, lows, closes);
+  const er = computeEfficiencyRatio(closes);
+
+  const adxScore = Math.min(100, (adxR.adx / 50) * 100);
+  const hurstScore = hurst * 100;
+  const choppinessScore = 100 - ci;
+  const erScore = er * 100;
+
+  const composite = adxScore * 0.35 + hurstScore * 0.25 + choppinessScore * 0.25 + erScore * 0.15;
+  const score = Math.max(1, Math.min(100, Math.round(composite)));
+
+  let label: RegimeLabel;
+  if (score >= 80) label = 'strong_trend';
+  else if (score >= 60) label = 'trending';
+  else if (score >= 40) label = 'transitional';
+  else if (score >= 20) label = 'choppy';
+  else label = 'mean_reversion';
+
+  let direction: TrendDirection = 'neutral';
+  if (adxR.adx > 20) {
+    direction = adxR.plusDI > adxR.minusDI ? 'bullish' : adxR.minusDI > adxR.plusDI ? 'bearish' : 'neutral';
+  }
+
+  const scores = [adxScore, hurstScore, choppinessScore, erScore];
+  const mean = scores.reduce((a, b) => a + b, 0) / 4;
+  const std = Math.sqrt(scores.reduce((a, v) => a + (v - mean) ** 2, 0) / 4);
+  const confidence = Math.round(Math.max(20, Math.min(95, 95 - std * 1.5)));
+
+  const descriptions: Record<RegimeLabel, string> = {
+    strong_trend: 'Market is in a strong trending phase. ADX and Hurst exponent both confirm directional momentum. Use trend-following strategies.',
+    trending: 'Market shows moderate trend strength. Directional bias is present but not overwhelming. Trend strategies work with proper risk management.',
+    transitional: 'Market is transitioning between regimes. Indicators show mixed signals. Reduce position sizes and wait for clearer confirmation.',
+    choppy: 'Market is choppy with frequent reversals. Price oscillates without a clear direction. Mean-reversion and range strategies are preferred.',
+    mean_reversion: 'Market is strongly mean-reverting. Price tends to snap back to the mean. Bollinger Band and RSI-based strategies excel here.',
+  };
+
+  const strategyMap: Record<RegimeLabel, { recommended: string[]; avoid: string[] }> = {
+    strong_trend: {
+      recommended: direction === 'bullish'
+        ? ['Trend following long', 'Momentum breakouts', 'Pullback buying']
+        : direction === 'bearish'
+          ? ['Trend following short', 'Breakdown sells', 'Rally fading']
+          : ['Breakout strategies', 'Momentum trading'],
+      avoid: ['Mean reversion', 'Grid bots', 'Counter-trend entries'],
+    },
+    trending: {
+      recommended: direction === 'bullish'
+        ? ['Swing long', 'EMA pullback buys', 'Channel breakouts']
+        : direction === 'bearish'
+          ? ['Swing short', 'EMA rejection sells', 'Support breakdown']
+          : ['Directional plays', 'Moderate leverage'],
+      avoid: ['Range trading', 'Tight grid bots', 'Counter-trend'],
+    },
+    transitional: {
+      recommended: ['Reduced sizing', 'Wait for confirmation', 'Scalping'],
+      avoid: ['Large directional bets', 'High leverage', 'Position scaling'],
+    },
+    choppy: {
+      recommended: ['Range trading', 'Mean reversion', 'Grid bots', 'BB bounces'],
+      avoid: ['Trend following', 'Breakout strategies', 'Momentum plays'],
+    },
+    mean_reversion: {
+      recommended: ['BB strategies', 'RSI oversold/overbought', 'Channel trading', 'Stat arb'],
+      avoid: ['Breakout strategies', 'Trend following', 'Momentum entries'],
+    },
+  };
+
+  return {
+    score, label, direction, confidence,
+    description: descriptions[label],
+    components: {
+      adx: Math.round(adxR.adx * 100) / 100, adxScore: Math.round(adxScore * 100) / 100,
+      hurst: Math.round(hurst * 1000) / 1000, hurstScore: Math.round(hurstScore * 100) / 100,
+      choppiness: Math.round(ci * 100) / 100, choppinessScore: Math.round(choppinessScore * 100) / 100,
+      efficiencyRatio: Math.round(er * 1000) / 1000, erScore: Math.round(erScore * 100) / 100,
+    },
+    strategies: strategyMap[label],
+  };
+}
+
+async function fetchCandlesForRegime(pairId: number, limit = 100) {
+  const candlesResult = await query(
+    `SELECT o.high, o.low, o.close, o.volume FROM ohlcv_1h o
+     WHERE o.pair_id = $1 ORDER BY o.time DESC LIMIT $2`,
+    [pairId, limit]
+  );
+  const candles = candlesResult.rows
+    .map((r: { high: string; low: string; close: string; volume: string }) => ({
+      high: parseFloat(r.high), low: parseFloat(r.low),
+      close: parseFloat(r.close), volume: parseFloat(r.volume),
+    }))
+    .reverse();
+  return candles;
+}
+
+// GET /regime — Market regime for BTCUSDT (backward compatible) + enriched with scoring
 router.get('/regime', async (_req: Request, res: Response) => {
   try {
-    // Check cache (5 min)
-    const cached = await redis.get('market:regime');
-    if (cached) {
-      res.json(JSON.parse(cached));
-      return;
-    }
+    const cached = await redis.get('market:regime:v2');
+    if (cached) { res.json(JSON.parse(cached)); return; }
 
-    // Find BTCUSDT pair
     const pairResult = await query(
       `SELECT tp.id FROM trading_pairs tp
        JOIN exchanges e ON e.id = tp.exchange_id
-       WHERE tp.symbol = 'BTCUSDT' AND tp.is_active = true
-       LIMIT 1`
+       WHERE tp.symbol = 'BTCUSDT' AND tp.is_active = true LIMIT 1`
     );
-
     if (pairResult.rows.length === 0) {
       res.status(404).json({ success: false, error: 'BTCUSDT not found' });
       return;
     }
 
-    const pairId = pairResult.rows[0].id;
-
-    // Fetch last 60 1h candles for robust indicator computation
-    const candlesResult = await query(
-      `SELECT o.high, o.low, o.close, o.volume FROM ohlcv_1h o
-       WHERE o.pair_id = $1
-       ORDER BY o.time DESC
-       LIMIT 60`,
-      [pairId]
-    );
-
-    const candles = candlesResult.rows
-      .map((r: { high: string; low: string; close: string; volume: string }) => ({
-        high: parseFloat(r.high),
-        low: parseFloat(r.low),
-        close: parseFloat(r.close),
-        volume: parseFloat(r.volume),
-      }))
-      .reverse();
-
+    const candles = await fetchCandlesForRegime(pairResult.rows[0].id);
     if (candles.length < 20) {
       res.status(404).json({ success: false, error: 'Insufficient data for regime detection' });
       return;
     }
 
-    const closes = candles.map((c) => c.close);
-    const highs = candles.map((c) => c.high);
-    const lows = candles.map((c) => c.low);
-    const volumes = candles.map((c) => c.volume);
+    const highs = candles.map((c: { high: number }) => c.high);
+    const lows = candles.map((c: { low: number }) => c.low);
+    const closes = candles.map((c: { close: number }) => c.close);
 
-    // --- RSI(14) ---
+    const regime = computeRegimeScore(highs, lows, closes);
+
+    // Compute RSI for backward compat
     let rsi = 50;
     if (closes.length >= 15) {
-      let gains = 0;
-      let losses = 0;
-      const offset = closes.length - 15;
+      let gains = 0, losses = 0;
+      const off = closes.length - 15;
       for (let i = 1; i <= 14; i++) {
-        const diff = closes[offset + i] - closes[offset + i - 1];
-        if (diff > 0) gains += diff;
-        else losses += Math.abs(diff);
+        const d = closes[off + i] - closes[off + i - 1];
+        if (d > 0) gains += d; else losses += Math.abs(d);
       }
-      const avgGain = gains / 14;
-      const avgLoss = losses / 14;
-      rsi = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+      rsi = losses === 0 ? 100 : 100 - 100 / (1 + gains / 14 / (losses / 14));
     }
 
-    // --- EMA50 ---
-    let ema50 = closes[0];
-    const k50 = 2 / (50 + 1);
-    for (let i = 1; i < closes.length; i++) {
-      ema50 = closes[i] * k50 + ema50 * (1 - k50);
-    }
+    // BB Width for backward compat
+    const bbP = Math.min(20, closes.length);
+    const bbS = closes.slice(-bbP);
+    const bbM = bbS.reduce((a, b) => a + b, 0) / bbP;
+    const bbStd = Math.sqrt(bbS.reduce((a, v) => a + (v - bbM) ** 2, 0) / bbP);
+    const bbWidth = bbM > 0 ? (bbStd * 4) / bbM * 100 : 0;
 
-    // --- ADX proxy: ratio of directional movement to range over last 14 candles ---
-    let adxProxy = 20;
-    const adxLen = Math.min(14, candles.length - 1);
-    if (adxLen >= 5) {
-      let plusDM = 0;
-      let minusDM = 0;
-      let trSum = 0;
-      const start = candles.length - adxLen - 1;
-      for (let i = start + 1; i < candles.length; i++) {
-        const upMove = highs[i] - highs[i - 1];
-        const downMove = lows[i - 1] - lows[i];
-        if (upMove > downMove && upMove > 0) plusDM += upMove;
-        if (downMove > upMove && downMove > 0) minusDM += downMove;
-        const tr = Math.max(
-          highs[i] - lows[i],
-          Math.abs(highs[i] - closes[i - 1]),
-          Math.abs(lows[i] - closes[i - 1])
-        );
-        trSum += tr;
-      }
-      if (trSum > 0) {
-        const plusDI = (plusDM / trSum) * 100;
-        const minusDI = (minusDM / trSum) * 100;
-        const diSum = plusDI + minusDI;
-        const dx = diSum > 0 ? (Math.abs(plusDI - minusDI) / diSum) * 100 : 0;
-        adxProxy = dx;
-      }
-    }
-
-    // --- Bollinger Bandwidth (20-period) ---
-    const bbPeriod = Math.min(20, closes.length);
-    const bbSlice = closes.slice(closes.length - bbPeriod);
-    const bbMean = bbSlice.reduce((a, b) => a + b, 0) / bbPeriod;
-    const bbStd = Math.sqrt(bbSlice.reduce((a, v) => a + (v - bbMean) ** 2, 0) / bbPeriod);
-    const bbWidth = bbMean > 0 ? (bbStd * 4) / bbMean * 100 : 0; // as percentage
-
-    // --- ATR(14) and ATR average ---
-    const atrPeriods: number[] = [];
+    // ATR for backward compat
+    const trs: number[] = [];
     for (let i = 1; i < candles.length; i++) {
-      const tr = Math.max(
-        highs[i] - lows[i],
-        Math.abs(highs[i] - closes[i - 1]),
-        Math.abs(lows[i] - closes[i - 1])
-      );
-      atrPeriods.push(tr);
+      trs.push(Math.max(highs[i] - lows[i], Math.abs(highs[i] - closes[i - 1]), Math.abs(lows[i] - closes[i - 1])));
     }
-    const recentATR = atrPeriods.length >= 14
-      ? atrPeriods.slice(-14).reduce((a, b) => a + b, 0) / 14
-      : atrPeriods.reduce((a, b) => a + b, 0) / (atrPeriods.length || 1);
-    const avgATR = atrPeriods.length > 0
-      ? atrPeriods.reduce((a, b) => a + b, 0) / atrPeriods.length
-      : recentATR;
-    const atrRatio = avgATR > 0 ? recentATR / avgATR : 1;
-
-    // --- Higher highs / lower lows detection (last 5 candles) ---
-    const last5 = candles.slice(-5);
-    let higherHighs = 0;
-    let lowerLows = 0;
-    for (let i = 1; i < last5.length; i++) {
-      if (last5[i].high > last5[i - 1].high) higherHighs++;
-      if (last5[i].low < last5[i - 1].low) lowerLows++;
-    }
-
-    // --- Volume trend (declining?) ---
-    const recentVol = volumes.slice(-7);
-    const olderVol = volumes.slice(-14, -7);
-    const avgRecentVol = recentVol.length > 0 ? recentVol.reduce((a, b) => a + b, 0) / recentVol.length : 0;
-    const avgOlderVol = olderVol.length > 0 ? olderVol.reduce((a, b) => a + b, 0) / olderVol.length : avgRecentVol;
-    const volumeDeclining = avgOlderVol > 0 ? avgRecentVol / avgOlderVol < 0.8 : false;
-
-    // --- BB expanding/contracting ---
-    let bbExpanding = false;
-    let bbContracting = false;
-    if (closes.length >= 30) {
-      const olderSlice = closes.slice(closes.length - 30, closes.length - 10);
-      const olderMean = olderSlice.reduce((a, b) => a + b, 0) / olderSlice.length;
-      const olderStd = Math.sqrt(olderSlice.reduce((a, v) => a + (v - olderMean) ** 2, 0) / olderSlice.length);
-      const olderBBW = olderMean > 0 ? (olderStd * 4) / olderMean * 100 : 0;
-      bbExpanding = bbWidth > olderBBW * 1.3;
-      bbContracting = bbWidth < olderBBW * 0.7;
-    }
-
-    const currentPrice = closes[closes.length - 1];
-
-    // --- Classify regime ---
-    let regime: string;
-    let confidence: number;
-    let description: string;
-    let recommended: string[];
-    let avoid: string[];
-
-    if (bbExpanding && atrRatio > 2) {
-      regime = 'high_volatility';
-      confidence = Math.min(95, 60 + atrRatio * 10);
-      description = 'Market is experiencing high volatility with expanding Bollinger Bands and ATR spikes. Expect large price swings.';
-      recommended = ['Straddle/Strangle', 'Scalping breakouts', 'Reduced position sizing'];
-      avoid = ['Grid trading', 'Tight stop-losses', 'High leverage'];
-    } else if (bbContracting && volumeDeclining) {
-      regime = 'low_volatility';
-      confidence = Math.min(90, 55 + (1 - atrRatio) * 30);
-      description = 'Market is in a low volatility compression phase with declining volume. A breakout may be imminent.';
-      recommended = ['Breakout anticipation', 'Accumulation', 'Options buying'];
-      avoid = ['Mean reversion', 'Scalping', 'Large positions'];
-    } else if (currentPrice > ema50 && adxProxy > 25 && higherHighs >= 3) {
-      regime = 'trending_up';
-      confidence = Math.min(95, 50 + adxProxy);
-      description = 'Strong uptrend detected. Price is above EMA50 with strong directional movement and consecutive higher highs.';
-      recommended = ['Trend following long', 'Pullback buying', 'Momentum strategies'];
-      avoid = ['Short selling', 'Mean reversion shorts', 'Counter-trend entries'];
-    } else if (currentPrice < ema50 && adxProxy > 25 && lowerLows >= 3) {
-      regime = 'trending_down';
-      confidence = Math.min(95, 50 + adxProxy);
-      description = 'Strong downtrend detected. Price is below EMA50 with strong directional movement and consecutive lower lows.';
-      recommended = ['Trend following short', 'Rally selling', 'Hedging'];
-      avoid = ['Buying dips', 'Long-only strategies', 'High leverage longs'];
-    } else if (adxProxy < 20) {
-      regime = 'ranging';
-      confidence = Math.min(85, 50 + (20 - adxProxy) * 2);
-      description = 'Market is range-bound with weak directional movement. Price is oscillating without a clear trend.';
-      recommended = ['Mean reversion', 'Range trading', 'Grid bots'];
-      avoid = ['Trend following', 'Breakout strategies', 'Momentum plays'];
-    } else {
-      // Transitional state
-      regime = 'ranging';
-      confidence = 40;
-      description = 'Market is in a transitional phase. Indicators show mixed signals between trending and ranging conditions.';
-      recommended = ['Reduced position sizing', 'Wait for confirmation', 'Scalping'];
-      avoid = ['Large directional bets', 'High leverage'];
-    }
-
-    confidence = Math.round(Math.max(0, Math.min(100, confidence)));
+    const atr = trs.length >= 14
+      ? trs.slice(-14).reduce((a, b) => a + b, 0) / 14
+      : trs.reduce((a, b) => a + b, 0) / (trs.length || 1);
 
     const response = {
       success: true,
       data: {
-        regime,
-        confidence,
-        description,
-        recommended,
-        avoid,
+        // Backward compatible fields
+        regime: regime.label === 'strong_trend' ? (regime.direction === 'bearish' ? 'trending_down' : 'trending_up')
+          : regime.label === 'trending' ? (regime.direction === 'bearish' ? 'trending_down' : 'trending_up')
+          : regime.label === 'choppy' || regime.label === 'mean_reversion' ? 'ranging'
+          : regime.label === 'transitional' ? 'ranging'
+          : 'ranging',
+        confidence: regime.confidence,
+        description: regime.description,
+        recommended: regime.strategies.recommended,
+        avoid: regime.strategies.avoid,
         indicators: {
-          adx: Math.round(adxProxy * 100) / 100,
+          adx: regime.components.adx,
           rsi: Math.round(rsi * 100) / 100,
           bbWidth: Math.round(bbWidth * 100) / 100,
-          atr: Math.round(recentATR * 100) / 100,
+          atr: Math.round(atr * 100) / 100,
         },
+        // New regime scoring fields
+        regimeScore: regime.score,
+        regimeLabel: regime.label,
+        direction: regime.direction,
+        components: regime.components,
       },
     };
 
-    // Cache 5 min
-    await redis.set('market:regime', JSON.stringify(response), 'EX', 300);
-
+    await redis.set('market:regime:v2', JSON.stringify(response), 'EX', 300);
     res.json(response);
   } catch (err) {
     logger.error('Regime error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// GET /regime/scores — Per-coin regime scoring for all active pairs
+router.get('/regime/scores', async (_req: Request, res: Response) => {
+  try {
+    const cached = await redis.get('market:regime:scores');
+    if (cached) { res.json(JSON.parse(cached)); return; }
+
+    const pairsResult = await query(
+      `SELECT tp.id, tp.symbol, e.name as exchange FROM trading_pairs tp
+       JOIN exchanges e ON e.id = tp.exchange_id
+       WHERE tp.is_active = true ORDER BY tp.symbol`
+    );
+
+    const scores: Array<{
+      symbol: string;
+      exchange: string;
+      score: number;
+      label: string;
+      direction: string;
+      confidence: number;
+      description: string;
+      components: RegimeScoreResult['components'];
+      strategies: RegimeScoreResult['strategies'];
+      price: number;
+      change24h: number;
+    }> = [];
+
+    for (const pair of pairsResult.rows) {
+      try {
+        const candles = await fetchCandlesForRegime(pair.id, 100);
+        if (candles.length < 30) continue;
+
+        const highs = candles.map((c: { high: number }) => c.high);
+        const lows = candles.map((c: { low: number }) => c.low);
+        const closes = candles.map((c: { close: number }) => c.close);
+
+        const regime = computeRegimeScore(highs, lows, closes);
+        const price = closes[closes.length - 1];
+        const price24hAgo = closes.length >= 24 ? closes[closes.length - 24] : closes[0];
+        const change24h = price24hAgo > 0 ? ((price - price24hAgo) / price24hAgo) * 100 : 0;
+
+        scores.push({
+          symbol: pair.symbol,
+          exchange: pair.exchange,
+          score: regime.score,
+          label: regime.label,
+          direction: regime.direction,
+          confidence: regime.confidence,
+          description: regime.description,
+          components: regime.components,
+          strategies: regime.strategies,
+          price: Math.round(price * 100) / 100,
+          change24h: Math.round(change24h * 100) / 100,
+        });
+      } catch (err) {
+        logger.warn('Regime score failed for pair', { symbol: pair.symbol, error: (err as Error).message });
+      }
+    }
+
+    // Sort by score descending (most trending first)
+    scores.sort((a, b) => b.score - a.score);
+
+    const response = { success: true, data: scores };
+    await redis.set('market:regime:scores', JSON.stringify(response), 'EX', 300);
+    res.json(response);
+  } catch (err) {
+    logger.error('Regime scores error', { error: (err as Error).message });
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });

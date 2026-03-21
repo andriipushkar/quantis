@@ -67,6 +67,7 @@ const InfluencerTracker = lazy(() => import('@/pages/InfluencerTracker'));
 const Tokenomics = lazy(() => import('@/pages/Tokenomics'));
 const DeFi = lazy(() => import('@/pages/DeFi'));
 const MarketProfile = lazy(() => import('@/pages/MarketProfile'));
+const MarketRegime = lazy(() => import('@/pages/MarketRegime'));
 const APIDocs = lazy(() => import('@/pages/APIDocs'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
@@ -191,6 +192,7 @@ const App: React.FC = () => {
             <Route path="/tokenomics" element={<Tokenomics />} />
             <Route path="/defi" element={<DeFi />} />
             <Route path="/market-profile" element={<MarketProfile />} />
+            <Route path="/regime" element={<MarketRegime />} />
           </Route>
 
           {/* Catch-all 404 */}

@@ -30,6 +30,7 @@ const PAGES: SearchResult[] = [
   { id: 'page-settings', name: 'Settings', type: 'page', icon: FileText, route: '/settings' },
   { id: 'page-indicators', name: 'Indicator Library', type: 'page', icon: FileText, route: '/indicators' },
   { id: 'page-correlation', name: 'Correlation', type: 'page', icon: FileText, route: '/correlation' },
+  { id: 'page-regime', name: 'Market Regime Scoring', type: 'page', icon: FileText, route: '/regime' },
   { id: 'page-leaderboard', name: 'Leaderboard', type: 'page', icon: FileText, route: '/leaderboard' },
   { id: 'page-token-scanner', name: 'Token Scanner', type: 'page', icon: FileText, route: '/token-scanner' },
   { id: 'page-dca', name: 'DCA Bot', type: 'page', icon: FileText, route: '/dca' },

@@ -53,7 +53,8 @@
     "devActivity": "Dev Activity",
     "networkMetrics": "Network Metrics",
     "renko": "Renko Chart",
-    "btcModels": "BTC Models"
+    "btcModels": "BTC Models",
+    "regime": "Regime Scoring"
   },
   "auth": {
     "login": "Log In",

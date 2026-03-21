@@ -294,6 +294,17 @@ export async function getSignalLeaderboard(): Promise<StrategyPerformance[]> {
 
 // --- Market Regime ---
 
+export interface RegimeComponents {
+  adx: number;
+  adxScore: number;
+  hurst: number;
+  hurstScore: number;
+  choppiness: number;
+  choppinessScore: number;
+  efficiencyRatio: number;
+  erScore: number;
+}
+
 export interface MarketRegimeData {
   regime: string;
   confidence: number;
@@ -306,10 +317,33 @@ export interface MarketRegimeData {
     bbWidth: number;
     atr: number;
   };
+  regimeScore?: number;
+  regimeLabel?: string;
+  direction?: string;
+  components?: RegimeComponents;
 }
 
 export async function getMarketRegime(): Promise<MarketRegimeData> {
   const res = await api.get<{ success: boolean; data: MarketRegimeData }>('/market/regime');
+  return res.data;
+}
+
+export interface RegimeScoreItem {
+  symbol: string;
+  exchange: string;
+  score: number;
+  label: string;
+  direction: string;
+  confidence: number;
+  description: string;
+  components: RegimeComponents;
+  strategies: { recommended: string[]; avoid: string[] };
+  price: number;
+  change24h: number;
+}
+
+export async function getRegimeScores(): Promise<RegimeScoreItem[]> {
+  const res = await api.get<{ success: boolean; data: RegimeScoreItem[] }>('/market/regime/scores');
   return res.data;
 }
 

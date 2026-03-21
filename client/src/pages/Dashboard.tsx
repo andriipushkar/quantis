@@ -296,7 +296,27 @@ function formatRegimeLabel(regime: string): string {
   return regime.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
+function getScoreColor(score: number): string {
+  if (score >= 80) return 'text-green-400';
+  if (score >= 60) return 'text-emerald-400';
+  if (score >= 40) return 'text-yellow-400';
+  if (score >= 20) return 'text-orange-400';
+  return 'text-red-400';
+}
+
+function getScoreLabel(label: string): string {
+  const map: Record<string, string> = {
+    strong_trend: 'Strong Trend',
+    trending: 'Trending',
+    transitional: 'Transitional',
+    choppy: 'Choppy',
+    mean_reversion: 'Mean Reversion',
+  };
+  return map[label] || label;
+}
+
 const MarketRegimeWidget: React.FC = React.memo(() => {
+  const navigate = useNavigate();
   const [data, setData] = useState<MarketRegimeData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -337,16 +357,36 @@ const MarketRegimeWidget: React.FC = React.memo(() => {
     );
   }
 
+  const regimeScore = data.regimeScore ?? 50;
+  const regimeLabel = data.regimeLabel ?? data.regime;
+
   return (
     <div className="flex flex-col gap-3">
-      {/* Regime Badge */}
+      {/* Score + Regime Badge */}
       <div className="flex items-center justify-between">
-        <span className={cn(
-          'inline-flex px-2.5 py-1 rounded-full text-xs font-bold',
-          getRegimeColor(data.regime)
-        )}>
-          {formatRegimeLabel(data.regime)}
-        </span>
+        <div className="flex items-center gap-2">
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center relative">
+            <svg className="w-10 h-10 -rotate-90" viewBox="0 0 36 36">
+              <circle cx="18" cy="18" r="14" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="3" />
+              <circle
+                cx="18" cy="18" r="14" fill="none"
+                className={getScoreColor(regimeScore).replace('text-', 'stroke-')}
+                strokeWidth="3"
+                strokeDasharray={`${(regimeScore / 100) * 88} 88`}
+                strokeLinecap="round"
+              />
+            </svg>
+            <span className={cn('absolute text-xs font-bold', getScoreColor(regimeScore))}>
+              {regimeScore}
+            </span>
+          </div>
+          <span className={cn(
+            'inline-flex px-2.5 py-1 rounded-full text-xs font-bold',
+            getRegimeColor(data.regime)
+          )}>
+            {getScoreLabel(regimeLabel)}
+          </span>
+        </div>
         <span className="text-xs text-muted-foreground font-mono">{data.confidence}% conf.</span>
       </div>
 
@@ -366,12 +406,12 @@ const MarketRegimeWidget: React.FC = React.memo(() => {
           <span className="font-mono text-foreground">{data.indicators.rsi}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-muted-foreground">BB Width</span>
-          <span className="font-mono text-foreground">{data.indicators.bbWidth}%</span>
+          <span className="text-muted-foreground">Hurst</span>
+          <span className="font-mono text-foreground">{data.components?.hurst ?? '—'}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-muted-foreground">ATR</span>
-          <span className="font-mono text-foreground">{data.indicators.atr}</span>
+          <span className="text-muted-foreground">Choppiness</span>
+          <span className="font-mono text-foreground">{data.components?.choppiness ?? '—'}</span>
         </div>
       </div>
 
@@ -386,6 +426,14 @@ const MarketRegimeWidget: React.FC = React.memo(() => {
           ))}
         </div>
       </div>
+
+      {/* Link to full page */}
+      <button
+        onClick={() => navigate('/regime')}
+        className="text-xs text-primary hover:text-primary/80 font-medium text-center pt-1 transition-colors"
+      >
+        View all coins scoring →
+      </button>
     </div>
   );
 });

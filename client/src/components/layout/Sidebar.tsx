@@ -54,6 +54,7 @@ import {
   Network,
   Box,
   CircleDollarSign as BitcoinIcon,
+  Gauge,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -104,6 +105,7 @@ const navItems: NavItem[] = [
   { icon: Shield, labelKey: 'nav.tokenScanner', path: '/token-scanner' },
   { icon: Grid3X3, labelKey: 'nav.heatmap', path: '/heatmap' },
   { icon: GitCompare, labelKey: 'nav.correlation', path: '/correlation' },
+  { icon: Gauge, labelKey: 'nav.regime', path: '/regime' },
   { icon: Calendar, labelKey: 'nav.seasonality', path: '/seasonality' },
   { icon: Server, labelKey: 'nav.exchangeHealth', path: '/exchange-health' },
   { icon: Percent, labelKey: 'nav.fundingRates', path: '/funding-rates' },
