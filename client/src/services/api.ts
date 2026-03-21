@@ -602,4 +602,36 @@ export async function getAllConfluenceScores(): Promise<ConfluenceScore[]> {
   return res.data;
 }
 
+export interface ConfluenceHistoryPoint {
+  time: string;
+  score: number;
+  label?: string;
+  risk?: string;
+  confidence?: number;
+  trend_score?: number;
+  momentum_score?: number;
+  signals_score?: number;
+  sentiment_score?: number;
+  volume_score?: number;
+}
+
+export interface ConfluenceHistoryData {
+  symbol: string;
+  resolution: string;
+  hours: number;
+  scores: ConfluenceHistoryPoint[];
+  prices: Array<{ time: string; price: number }>;
+}
+
+export async function getConfluenceHistory(
+  symbol: string,
+  hours: number = 24,
+  resolution: 'raw' | 'hourly' = 'raw',
+): Promise<ConfluenceHistoryData> {
+  const res = await api.get<{ success: boolean; data: ConfluenceHistoryData }>(
+    `/analysis/confluence/${symbol}/history?hours=${hours}&resolution=${resolution}`
+  );
+  return res.data;
+}
+
 export { setToken, clearToken, getToken };

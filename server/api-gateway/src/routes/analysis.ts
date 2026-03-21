@@ -1060,6 +1060,71 @@ function calculateBB(data: number[], period: number, mult: number) {
 
 // ── Decision Confluence Score ──────────────────────────────────────
 
+// GET /confluence/:symbol/history — historical confluence scores for backtesting
+router.get('/confluence/:symbol/history', async (req: Request, res: Response) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+    const hours = Math.min(720, Math.max(1, parseInt(req.query.hours as string, 10) || 24));
+    const resolution = (req.query.resolution as string) || 'raw'; // 'raw' | 'hourly'
+
+    let rows;
+
+    if (resolution === 'hourly') {
+      // Use the continuous aggregate for longer time ranges
+      const result = await query(
+        `SELECT bucket as time, avg_score as score, min_score, max_score,
+                avg_confidence as confidence,
+                avg_trend as trend_score, avg_momentum as momentum_score,
+                avg_signals as signals_score, avg_sentiment as sentiment_score,
+                avg_volume as volume_score, sample_count
+         FROM confluence_hourly
+         WHERE symbol = $1 AND bucket >= NOW() - make_interval(hours => $2)
+         ORDER BY bucket ASC`,
+        [symbol, hours]
+      );
+      rows = result.rows;
+    } else {
+      // Raw 60-second resolution (limit to prevent huge payloads)
+      const limit = Math.min(1440, hours * 60); // cap at 1440 points (24h of raw data)
+      const result = await query(
+        `SELECT time, score, label, risk, confidence,
+                trend_score, momentum_score, signals_score,
+                sentiment_score, volume_score
+         FROM confluence_history
+         WHERE symbol = $1 AND time >= NOW() - make_interval(hours => $2)
+         ORDER BY time ASC
+         LIMIT $3`,
+        [symbol, hours, limit]
+      );
+      rows = result.rows;
+    }
+
+    // Also fetch matching price data for overlay
+    const priceResult = await query(
+      `SELECT o.time, o.close as price
+       FROM ohlcv_1m o
+       JOIN trading_pairs tp ON tp.id = o.pair_id
+       WHERE tp.symbol = $1 AND o.time >= NOW() - make_interval(hours => $2)
+       ORDER BY o.time ASC`,
+      [symbol, hours]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        symbol,
+        resolution,
+        hours,
+        scores: rows,
+        prices: priceResult.rows,
+      },
+    });
+  } catch (err) {
+    logger.error('Confluence history error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 // GET /confluence/:symbol — aggregated 1-100 decision score
 router.get('/confluence/:symbol', async (req: Request, res: Response) => {
   try {

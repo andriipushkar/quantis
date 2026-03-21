@@ -133,7 +133,33 @@ analysisQueue.process('analyze-pair', 5, async (job) => {
     // Publish for real-time WebSocket delivery
     await publisherClient.publish('confluence:update', JSON.stringify(confluence));
 
-    logger.debug('Confluence score computed', {
+    // Persist to database for backtest history
+    await pool.query(
+      `INSERT INTO confluence_history
+         (time, pair_id, symbol, score, label, risk, confidence,
+          trend_score, momentum_score, signals_score, sentiment_score, volume_score,
+          components_json)
+       VALUES (NOW(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       ON CONFLICT (time, pair_id) DO UPDATE SET
+         score = EXCLUDED.score, label = EXCLUDED.label,
+         components_json = EXCLUDED.components_json`,
+      [
+        pair.id,
+        pair.symbol,
+        confluence.score,
+        confluence.label,
+        confluence.risk,
+        confluence.confidence,
+        confluence.components.trend.score,
+        confluence.components.momentum.score,
+        confluence.components.signals.score,
+        confluence.components.sentiment.score,
+        confluence.components.volume.score,
+        JSON.stringify(confluence.components),
+      ]
+    );
+
+    logger.debug('Confluence score computed & persisted', {
       symbol: pair.symbol,
       score: confluence.score,
       label: confluence.label,
