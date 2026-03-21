@@ -161,9 +161,9 @@ const redisSub = new Redis({
   maxRetriesPerRequest: null,
 });
 
-redisSub.subscribe('ticker:update', 'signal:new', 'alert:push', (err) => {
+redisSub.subscribe('ticker:update', 'signal:new', 'alert:push', 'confluence:update', (err) => {
   if (err) logger.error('Redis subscribe error', { error: err.message });
-  else logger.info('Subscribed to Redis channels: ticker:update, signal:new, alert:push');
+  else logger.info('Subscribed to Redis channels: ticker:update, signal:new, alert:push, confluence:update');
 });
 
 redisSub.on('message', (channel, message) => {
@@ -178,6 +178,11 @@ redisSub.on('message', (channel, message) => {
       }
     } else if (channel === 'signal:new') {
       io.emit('signal:new', data);
+    } else if (channel === 'confluence:update') {
+      io.emit('confluence:update', data);
+      if (data.symbol) {
+        io.to(`ticker:${data.symbol}`).emit('confluence:update', data);
+      }
     } else if (channel === 'alert:push') {
       // Send to specific user
       if (data.userId) {

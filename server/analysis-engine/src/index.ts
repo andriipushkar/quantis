@@ -7,6 +7,7 @@ import logger from './config/logger.js';
 import pool from './config/database.js';
 import { publisherClient } from './config/redis.js';
 import calculator from './indicators/calculator.js';
+import { calculateConfluence, type ConfluenceInput } from './confluence/engine.js';
 
 const PORT = parseInt(process.env.PORT || '3003', 10);
 const app = express();
@@ -81,6 +82,68 @@ analysisQueue.process('analyze-pair', 5, async (job) => {
   const currentPrice = closes[closes.length - 1];
   const avgVolume = volumes.slice(-20).reduce((s, v) => s + v, 0) / 20;
   const currentVolume = volumes[volumes.length - 1];
+
+  // ── Confluence Score ─────────────────────────────────────────────
+  try {
+    // Gather active signals for this pair
+    const signalsResult = await pool.query(
+      `SELECT type, confidence, strategy FROM signals WHERE pair_id = $1 AND status = 'active'`,
+      [pair.id]
+    );
+
+    // Gather sentiment data from Redis
+    let fearGreed = 50;
+    let newsSentiment = { bullish: 0, bearish: 0, neutral: 1 };
+    let whaleAlertCount = 0;
+    try {
+      const fgData = await publisherClient.get(`confluence:feargreed`);
+      if (fgData) fearGreed = parseInt(fgData, 10);
+      const newsData = await publisherClient.get(`confluence:news:sentiment`);
+      if (newsData) newsSentiment = JSON.parse(newsData);
+      const whaleData = await publisherClient.get(`confluence:whales:${pair.symbol}`);
+      if (whaleData) whaleAlertCount = parseInt(whaleData, 10);
+    } catch { /* use defaults */ }
+
+    const confluenceInput: ConfluenceInput = {
+      symbol: pair.symbol,
+      highs,
+      lows,
+      closes,
+      volumes,
+      activeSignals: signalsResult.rows.map((r: { type: string; confidence: number; strategy: string }) => ({
+        type: r.type,
+        confidence: r.confidence,
+        strategy: r.strategy,
+      })),
+      newsSentiment,
+      fearGreedIndex: fearGreed,
+      whaleAlertCount,
+    };
+
+    const confluence = calculateConfluence(confluenceInput);
+
+    // Cache in Redis (60s TTL, refreshed every cycle)
+    await publisherClient.set(
+      `confluence:${pair.symbol}`,
+      JSON.stringify(confluence),
+      'EX',
+      120,
+    );
+
+    // Publish for real-time WebSocket delivery
+    await publisherClient.publish('confluence:update', JSON.stringify(confluence));
+
+    logger.debug('Confluence score computed', {
+      symbol: pair.symbol,
+      score: confluence.score,
+      label: confluence.label,
+    });
+  } catch (err) {
+    logger.error('Confluence scoring failed', {
+      symbol: pair.symbol,
+      error: (err as Error).message,
+    });
+  }
 
   // Check if there's already an active signal for this pair
   const existing = await pool.query(

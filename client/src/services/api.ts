@@ -568,4 +568,38 @@ export async function getMarketProfile(symbol: string): Promise<MarketProfileDat
   return res.data;
 }
 
+// ── Confluence ──────────────────────────────────────────────────────
+
+export interface ConfluenceComponentDetail {
+  score: number;
+  weight: number;
+  details: Record<string, unknown>;
+}
+
+export interface ConfluenceScore {
+  symbol: string;
+  score: number;
+  label: 'strong_sell' | 'sell' | 'neutral' | 'buy' | 'strong_buy';
+  risk: 'low' | 'medium' | 'high';
+  confidence: number;
+  components: {
+    trend: ConfluenceComponentDetail;
+    momentum: ConfluenceComponentDetail;
+    signals: ConfluenceComponentDetail;
+    sentiment: ConfluenceComponentDetail;
+    volume: ConfluenceComponentDetail;
+  };
+  timestamp: string;
+}
+
+export async function getConfluenceScore(symbol: string): Promise<ConfluenceScore> {
+  const res = await api.get<{ success: boolean; data: ConfluenceScore }>(`/analysis/confluence/${symbol}`);
+  return res.data;
+}
+
+export async function getAllConfluenceScores(): Promise<ConfluenceScore[]> {
+  const res = await api.get<{ success: boolean; data: ConfluenceScore[] }>('/analysis/confluence');
+  return res.data;
+}
+
 export { setToken, clearToken, getToken };

@@ -1058,4 +1058,64 @@ function calculateBB(data: number[], period: number, mult: number) {
   return { upper, middle, lower };
 }
 
+// ── Decision Confluence Score ──────────────────────────────────────
+
+// GET /confluence/:symbol — aggregated 1-100 decision score
+router.get('/confluence/:symbol', async (req: Request, res: Response) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+
+    // Try Redis cache first (computed every 60s by analysis-engine)
+    const cached = await redis.get(`confluence:${symbol}`);
+    if (cached) {
+      res.json({ success: true, data: JSON.parse(cached) });
+      return;
+    }
+
+    // Cache miss — return 404 with guidance
+    res.status(404).json({
+      success: false,
+      error: `No confluence data for ${symbol}. Score is computed every 60 seconds for active trading pairs.`,
+    });
+  } catch (err) {
+    logger.error('Confluence endpoint error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// GET /confluence — all available confluence scores
+router.get('/confluence', async (_req: Request, res: Response) => {
+  try {
+    // Scan Redis for all confluence keys
+    const keys = await redis.keys('confluence:*');
+    const confluenceKeys = keys.filter(
+      (k) => !k.includes(':feargreed') && !k.includes(':news:') && !k.includes(':whales:')
+    );
+
+    if (confluenceKeys.length === 0) {
+      res.json({ success: true, data: [] });
+      return;
+    }
+
+    const pipeline = redis.pipeline();
+    for (const key of confluenceKeys) {
+      pipeline.get(key);
+    }
+    const results = await pipeline.exec();
+
+    const scores = (results || [])
+      .map((r) => {
+        if (!r || r[0] || typeof r[1] !== 'string') return null;
+        try { return JSON.parse(r[1]); } catch { return null; }
+      })
+      .filter(Boolean)
+      .sort((a: { score: number }, b: { score: number }) => b.score - a.score);
+
+    res.json({ success: true, data: scores });
+  } catch (err) {
+    logger.error('Confluence list error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 export default router;
