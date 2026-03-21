@@ -5,8 +5,17 @@ import redis from '../config/redis.js';
 import logger from '../config/logger.js';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
 import { validateBody, copilotSchema } from '../validators/index.js';
+import { CircuitBreaker } from '@quantis/shared';
 
 const router = Router();
+
+const claudeBreaker = new CircuitBreaker('claude-api', {
+  failureThreshold: 3,
+  resetTimeout: 60_000, // 1 minute cooldown for paid API
+  onStateChange: (name, from, to) => {
+    logger.warn(`Circuit breaker "${name}" transitioned ${from} → ${to}`);
+  },
+});
 
 // Rate limit: 10 queries per hour per user
 async function checkRateLimit(userId: string): Promise<boolean> {
@@ -179,39 +188,41 @@ router.post('/ask', authenticate, validateBody(copilotSchema), async (req: Authe
     let answer: string;
 
     if (env.ANTHROPIC_API_KEY) {
-      // Call Claude API
-      try {
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': env.ANTHROPIC_API_KEY,
-            'anthropic-version': '2023-06-01',
-          },
-          body: JSON.stringify({
-            model: env.ANTHROPIC_MODEL,
-            max_tokens: env.COPILOT_MAX_TOKENS,
-            system: 'You are a professional crypto technical analyst for Quantis platform. Analyze based on the provided data. Be concise. Never give financial advice. Include confidence level.',
-            messages: [
-              {
-                role: 'user',
-                content: `${question}\n\nMarket Context:\n${JSON.stringify(contextData, null, 2)}`,
-              },
-            ],
-          }),
-        });
+      // Call Claude API with Circuit Breaker protection
+      answer = await claudeBreaker.call(
+        async () => {
+          const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': env.ANTHROPIC_API_KEY!,
+              'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify({
+              model: env.ANTHROPIC_MODEL,
+              max_tokens: env.COPILOT_MAX_TOKENS,
+              system: 'You are a professional crypto technical analyst for Quantis platform. Analyze based on the provided data. Be concise. Never give financial advice. Include confidence level.',
+              messages: [
+                {
+                  role: 'user',
+                  content: `${question}\n\nMarket Context:\n${JSON.stringify(contextData, null, 2)}`,
+                },
+              ],
+            }),
+          });
 
-        if (response.ok) {
-          const data = await response.json();
-          answer = data.content?.[0]?.text || 'Unable to generate analysis at this time.';
-        } else {
-          logger.warn('Claude API returned non-OK status', { status: response.status });
-          answer = generateMockAnalysis(contextData);
-        }
-      } catch (err) {
-        logger.error('Claude API call failed', { error: (err as Error).message });
-        answer = generateMockAnalysis(contextData);
-      }
+          if (!response.ok) {
+            throw new Error(`Claude API ${response.status}`);
+          }
+
+          const data = (await response.json()) as { content?: Array<{ text?: string }> };
+          return data.content?.[0]?.text || 'Unable to generate analysis at this time.';
+        },
+        () => {
+          logger.warn('Claude API circuit breaker fallback — using mock analysis');
+          return generateMockAnalysis(contextData);
+        },
+      );
     } else {
       answer = generateMockAnalysis(contextData);
     }

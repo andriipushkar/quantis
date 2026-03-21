@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import Redis from 'ioredis';
 import { BaseCollector } from './base.js';
 import { normalizeBinanceKline, type BinanceRawKline } from '../normalizers/index.js';
+import { CircuitBreaker, CircuitState } from '@quantis/shared';
 
 const DEFAULT_PAIRS = [
   'BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT',
@@ -45,9 +46,17 @@ export class BinanceCollector extends BaseCollector {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pingInterval: ReturnType<typeof setInterval> | null = null;
   private aggregateInterval: ReturnType<typeof setInterval> | null = null;
+  private restBreaker: CircuitBreaker;
 
   constructor(db: Pool, redis: Redis) {
     super(db, redis);
+    this.restBreaker = new CircuitBreaker('binance-rest', {
+      failureThreshold: 5,
+      resetTimeout: 30_000,
+      onStateChange: (name, from, to) => {
+        this.logger.warn(`Circuit breaker "${name}" transitioned ${from} → ${to}`);
+      },
+    });
   }
 
   async start(): Promise<void> {
@@ -328,18 +337,27 @@ export class BinanceCollector extends BaseCollector {
 
         this.logger.info(`Backfilling ${symbol} (${existingCount} candles in DB)`);
 
-        const url = `${BINANCE_REST_BASE}/klines?symbol=${symbol}&interval=1m&limit=${BACKFILL_LIMIT}`;
-        const response = await fetch(url);
-
-        if (!response.ok) {
-          this.logger.error(`Binance API error for ${symbol}`, {
-            status: response.status,
-            statusText: response.statusText,
-          });
+        // Skip backfill if circuit breaker is open (Binance REST API is down)
+        if (this.restBreaker.getState() === CircuitState.OPEN) {
+          this.logger.warn(`Skipping backfill for ${symbol}: circuit breaker is OPEN`);
           continue;
         }
 
-        const klines = (await response.json()) as unknown[][];
+        const url = `${BINANCE_REST_BASE}/klines?symbol=${symbol}&interval=1m&limit=${BACKFILL_LIMIT}`;
+
+        const klines = await this.restBreaker.call(
+          async () => {
+            const response = await fetch(url);
+            if (!response.ok) {
+              throw new Error(`Binance API ${response.status}: ${response.statusText}`);
+            }
+            return (await response.json()) as unknown[][];
+          },
+          () => {
+            this.logger.warn(`Circuit breaker fallback for ${symbol}: skipping backfill`);
+            return [] as unknown[][];
+          },
+        );
 
         if (!Array.isArray(klines) || klines.length === 0) {
           this.logger.warn(`No kline data returned for ${symbol}`);

@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import Redis from 'ioredis';
 import { BaseCollector } from './base.js';
 import { normalizeOkxKline } from '../normalizers/index.js';
+import { CircuitBreaker, CircuitState } from '@quantis/shared';
 
 const DEFAULT_PAIRS = [
   'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT',
@@ -63,9 +64,17 @@ export class OkxCollector extends BaseCollector {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pingInterval: ReturnType<typeof setInterval> | null = null;
   private aggregateInterval: ReturnType<typeof setInterval> | null = null;
+  private restBreaker: CircuitBreaker;
 
   constructor(db: Pool, redis: Redis) {
     super(db, redis);
+    this.restBreaker = new CircuitBreaker('okx-rest', {
+      failureThreshold: 5,
+      resetTimeout: 30_000,
+      onStateChange: (name, from, to) => {
+        this.logger.warn(`Circuit breaker "${name}" transitioned ${from} → ${to}`);
+      },
+    });
   }
 
   async start(): Promise<void> {
@@ -378,30 +387,35 @@ export class OkxCollector extends BaseCollector {
 
         this.logger.info(`Backfilling OKX ${symbol} (${existingCount} candles in DB)`);
 
+        if (this.restBreaker.getState() === CircuitState.OPEN) {
+          this.logger.warn(`Skipping OKX backfill for ${symbol}: circuit breaker is OPEN`);
+          continue;
+        }
+
         const instId = toOkxInstId(symbol);
         const url = `${OKX_REST_BASE}/candles?instId=${instId}&bar=1m&limit=${BACKFILL_LIMIT}`;
-        const response = await fetch(url);
 
-        if (!response.ok) {
-          this.logger.error(`OKX API error for ${symbol}`, {
-            status: response.status,
-            statusText: response.statusText,
-          });
-          continue;
-        }
-
-        const json = (await response.json()) as {
-          code: string;
-          data: string[][];
-        };
-
-        if (json.code !== '0' || !json.data?.length) {
-          this.logger.warn(`No OKX kline data returned for ${symbol}`);
-          continue;
-        }
-
-        // OKX returns newest first — reverse to chronological order
-        const klines = json.data.reverse();
+        const klines = await this.restBreaker.call(
+          async () => {
+            const response = await fetch(url);
+            if (!response.ok) {
+              throw new Error(`OKX API ${response.status}: ${response.statusText}`);
+            }
+            const json = (await response.json()) as {
+              code: string;
+              data: string[][];
+            };
+            if (json.code !== '0' || !json.data?.length) {
+              return [] as string[][];
+            }
+            // OKX returns newest first — reverse to chronological order
+            return json.data.reverse();
+          },
+          () => {
+            this.logger.warn(`Circuit breaker fallback for OKX ${symbol}: skipping backfill`);
+            return [] as string[][];
+          },
+        );
 
         const values: string[] = [];
         const params: unknown[] = [];

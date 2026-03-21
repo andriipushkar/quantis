@@ -37,6 +37,7 @@ import influencerRoutes from './routes/influencers.js';
 import tokenomicsRoutes from './routes/tokenomics.js';
 import docsRoutes from './routes/docs.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
+import { applySocketRateLimiting, canSubscribe, releaseSubscriptions } from './middleware/socketRateLimiter.js';
 import { sanitizeResponse, validateContentType, preventParamPollution } from './middleware/security.js';
 import Redis from 'ioredis';
 
@@ -114,20 +115,37 @@ const io = new SocketIOServer(server, {
   cors: corsOptions,
 });
 
+// Apply WebSocket rate limiting (per-IP connection limits, event throttling)
+applySocketRateLimiting(io);
+
 io.on('connection', (socket) => {
   logger.info('Socket.IO client connected', { id: socket.id });
 
-  // Join rooms for specific pairs
+  // Join rooms for specific pairs (with subscription quota check)
   socket.on('subscribe:ticker', (symbols: string[]) => {
-    symbols.forEach((s) => socket.join(`ticker:${s}`));
+    if (!Array.isArray(symbols)) return;
+    const safeSymbols = symbols.slice(0, 50); // cap per-event batch
+    if (!canSubscribe(socket, safeSymbols.length)) {
+      socket.emit('error', { message: 'Subscription limit reached for your tier' });
+      return;
+    }
+    safeSymbols.forEach((s) => socket.join(`ticker:${s}`));
   });
 
   socket.on('subscribe:ohlcv', ({ symbol, timeframe }: { symbol: string; timeframe: string }) => {
+    if (!symbol || !timeframe) return;
+    if (!canSubscribe(socket, 1)) {
+      socket.emit('error', { message: 'Subscription limit reached for your tier' });
+      return;
+    }
     socket.join(`ohlcv:${symbol}:${timeframe}`);
   });
 
   socket.on('unsubscribe:ticker', (symbols: string[]) => {
-    symbols.forEach((s) => socket.leave(`ticker:${s}`));
+    if (!Array.isArray(symbols)) return;
+    const safeSymbols = symbols.slice(0, 50);
+    safeSymbols.forEach((s) => socket.leave(`ticker:${s}`));
+    releaseSubscriptions(socket, safeSymbols.length);
   });
 
   socket.on('disconnect', (reason) => {

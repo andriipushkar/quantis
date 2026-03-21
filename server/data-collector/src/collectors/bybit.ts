@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import Redis from 'ioredis';
 import { BaseCollector } from './base.js';
 import { normalizeBybitKline } from '../normalizers/index.js';
+import { CircuitBreaker, CircuitState } from '@quantis/shared';
 
 const DEFAULT_PAIRS = [
   'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT',
@@ -57,9 +58,17 @@ export class BybitCollector extends BaseCollector {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pingInterval: ReturnType<typeof setInterval> | null = null;
   private aggregateInterval: ReturnType<typeof setInterval> | null = null;
+  private restBreaker: CircuitBreaker;
 
   constructor(db: Pool, redis: Redis) {
     super(db, redis);
+    this.restBreaker = new CircuitBreaker('bybit-rest', {
+      failureThreshold: 5,
+      resetTimeout: 30_000,
+      onStateChange: (name, from, to) => {
+        this.logger.warn(`Circuit breaker "${name}" transitioned ${from} → ${to}`);
+      },
+    });
   }
 
   async start(): Promise<void> {
@@ -364,29 +373,34 @@ export class BybitCollector extends BaseCollector {
 
         this.logger.info(`Backfilling Bybit ${symbol} (${existingCount} candles in DB)`);
 
+        if (this.restBreaker.getState() === CircuitState.OPEN) {
+          this.logger.warn(`Skipping Bybit backfill for ${symbol}: circuit breaker is OPEN`);
+          continue;
+        }
+
         const url = `${BYBIT_REST_BASE}/kline?category=spot&symbol=${symbol}&interval=1&limit=${BACKFILL_LIMIT}`;
-        const response = await fetch(url);
 
-        if (!response.ok) {
-          this.logger.error(`Bybit API error for ${symbol}`, {
-            status: response.status,
-            statusText: response.statusText,
-          });
-          continue;
-        }
-
-        const json = (await response.json()) as {
-          retCode: number;
-          result: { list: string[][] };
-        };
-
-        if (json.retCode !== 0 || !json.result?.list?.length) {
-          this.logger.warn(`No Bybit kline data returned for ${symbol}`);
-          continue;
-        }
-
-        // Bybit returns newest first — reverse to chronological order
-        const klines = json.result.list.reverse();
+        const klines = await this.restBreaker.call(
+          async () => {
+            const response = await fetch(url);
+            if (!response.ok) {
+              throw new Error(`Bybit API ${response.status}: ${response.statusText}`);
+            }
+            const json = (await response.json()) as {
+              retCode: number;
+              result: { list: string[][] };
+            };
+            if (json.retCode !== 0 || !json.result?.list?.length) {
+              return [] as string[][];
+            }
+            // Bybit returns newest first — reverse to chronological order
+            return json.result.list.reverse();
+          },
+          () => {
+            this.logger.warn(`Circuit breaker fallback for Bybit ${symbol}: skipping backfill`);
+            return [] as string[][];
+          },
+        );
 
         const values: string[] = [];
         const params: unknown[] = [];

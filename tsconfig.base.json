@@ -13,10 +13,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "./dist",
-    "baseUrl": ".",
-    "paths": {
-      "@quantis/shared/*": ["shared/*"]
-    }
+    "baseUrl": "."
   },
   "exclude": ["node_modules", "dist"]
 }
