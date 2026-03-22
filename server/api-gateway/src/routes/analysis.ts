@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { query } from '../config/database.js';
 import redis from '../config/redis.js';
 import logger from '../config/logger.js';
+import { calculateRSI, calculateEMA, calculateSMA, calculateBB } from '../utils/indicators.js';
 
 // Whitelist of valid timeframe table names to prevent SQL injection
 const SAFE_TABLES: Record<string, string> = {
@@ -1015,70 +1016,6 @@ function round(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-function calculateRSI(closes: number[], period: number): number[] {
-  if (closes.length < period + 1) return [];
-  const rsi: number[] = [];
-  let avgGain = 0;
-  let avgLoss = 0;
-
-  for (let i = 1; i <= period; i++) {
-    const diff = closes[i] - closes[i - 1];
-    if (diff > 0) avgGain += diff;
-    else avgLoss += Math.abs(diff);
-  }
-  avgGain /= period;
-  avgLoss /= period;
-
-  rsi.push(avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss));
-
-  for (let i = period + 1; i < closes.length; i++) {
-    const diff = closes[i] - closes[i - 1];
-    avgGain = (avgGain * (period - 1) + (diff > 0 ? diff : 0)) / period;
-    avgLoss = (avgLoss * (period - 1) + (diff < 0 ? Math.abs(diff) : 0)) / period;
-    rsi.push(avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss));
-  }
-
-  return rsi;
-}
-
-function calculateEMA(data: number[], period: number): number[] {
-  if (data.length < period) return [];
-  const k = 2 / (period + 1);
-  const ema: number[] = [];
-  let sum = 0;
-  for (let i = 0; i < period; i++) sum += data[i];
-  ema.push(sum / period);
-  for (let i = period; i < data.length; i++) {
-    ema.push(data[i] * k + ema[ema.length - 1] * (1 - k));
-  }
-  return ema;
-}
-
-function calculateSMA(data: number[], period: number): number[] {
-  if (data.length < period) return [];
-  const sma: number[] = [];
-  for (let i = period - 1; i < data.length; i++) {
-    let sum = 0;
-    for (let j = i - period + 1; j <= i; j++) sum += data[j];
-    sma.push(sum / period);
-  }
-  return sma;
-}
-
-function calculateBB(data: number[], period: number, mult: number) {
-  const middle = calculateSMA(data, period);
-  const upper: number[] = [];
-  const lower: number[] = [];
-  for (let i = 0; i < middle.length; i++) {
-    const slice = data.slice(i, i + period);
-    const mean = middle[i];
-    const variance = slice.reduce((s, v) => s + (v - mean) ** 2, 0) / period;
-    const std = Math.sqrt(variance);
-    upper.push(mean + mult * std);
-    lower.push(mean - mult * std);
-  }
-  return { upper, middle, lower };
-}
 
 // ── Decision Confluence Score ──────────────────────────────────────
 

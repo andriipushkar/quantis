@@ -6,27 +6,6 @@ import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
 
 const router = Router();
 
-// --- In-memory DCA bot store ---
-
-interface DCABot {
-  id: string;
-  userId: string;
-  symbol: string;
-  baseAmount: number;
-  interval: 'daily' | 'weekly';
-  strategy: 'standard' | 'rsi_weighted' | 'fear_greed';
-  createdAt: string;
-}
-
-const botStore = new Map<string, DCABot[]>();
-
-function getUserBots(userId: string): DCABot[] {
-  if (!botStore.has(userId)) {
-    botStore.set(userId, []);
-  }
-  return botStore.get(userId)!;
-}
-
 // Fetch ticker from Redis
 async function getTickerPrice(symbol: string): Promise<number | null> {
   const exchanges = ['binance', 'bybit', 'okx'];
@@ -45,7 +24,21 @@ async function getTickerPrice(symbol: string): Promise<number | null> {
 // GET / — List user's DCA bots
 router.get('/', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const bots = getUserBots(req.user!.id);
+    const result = await query(
+      `SELECT * FROM dca_bots WHERE user_id = $1 AND is_active = true ORDER BY created_at DESC`,
+      [req.user!.id]
+    );
+
+    const bots = result.rows.map((r: Record<string, unknown>) => ({
+      id: r.id as string,
+      userId: r.user_id as string,
+      symbol: r.symbol as string,
+      baseAmount: parseFloat(r.base_amount as string),
+      interval: r.interval as string,
+      strategy: r.strategy as string,
+      createdAt: (r.created_at as Date).toISOString(),
+    }));
+
     res.json({ success: true, data: bots });
   } catch (err) {
     logger.error('DCA list error', { error: (err as Error).message });
@@ -84,20 +77,26 @@ router.post('/', authenticate, async (req: AuthenticatedRequest, res: Response) 
 
     const symbol = rawSymbol.toUpperCase();
 
-    const bot: DCABot = {
-      id: `dca_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
-      userId: req.user!.id,
-      symbol,
-      baseAmount: amount,
-      interval,
-      strategy,
-      createdAt: new Date().toISOString(),
-    };
+    const result = await query(
+      `INSERT INTO dca_bots (user_id, symbol, base_amount, interval, strategy)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [req.user!.id, symbol, amount, interval, strategy]
+    );
 
-    const bots = getUserBots(req.user!.id);
-    bots.push(bot);
-
-    res.json({ success: true, data: bot });
+    const r = result.rows[0];
+    res.json({
+      success: true,
+      data: {
+        id: r.id,
+        userId: r.user_id,
+        symbol: r.symbol,
+        baseAmount: parseFloat(r.base_amount),
+        interval: r.interval,
+        strategy: r.strategy,
+        createdAt: r.created_at.toISOString(),
+      },
+    });
   } catch (err) {
     logger.error('DCA create error', { error: (err as Error).message });
     res.status(500).json({ success: false, error: 'Internal server error' });
@@ -107,15 +106,16 @@ router.post('/', authenticate, async (req: AuthenticatedRequest, res: Response) 
 // DELETE /:id — Delete bot
 router.delete('/:id', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const bots = getUserBots(req.user!.id);
-    const idx = bots.findIndex((b) => b.id === req.params.id);
+    const result = await query(
+      `UPDATE dca_bots SET is_active = false WHERE id = $1 AND user_id = $2 AND is_active = true RETURNING id`,
+      [req.params.id, req.user!.id]
+    );
 
-    if (idx === -1) {
+    if (result.rows.length === 0) {
       res.status(404).json({ success: false, error: 'Bot not found' });
       return;
     }
 
-    bots.splice(idx, 1);
     res.json({ success: true, data: { deleted: true } });
   } catch (err) {
     logger.error('DCA delete error', { error: (err as Error).message });
@@ -126,13 +126,24 @@ router.delete('/:id', authenticate, async (req: AuthenticatedRequest, res: Respo
 // GET /:id/simulate — Simulate performance over last 30 days
 router.get('/:id/simulate', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const bots = getUserBots(req.user!.id);
-    const bot = bots.find((b) => b.id === req.params.id);
+    const botResult = await query(
+      `SELECT * FROM dca_bots WHERE id = $1 AND user_id = $2 AND is_active = true`,
+      [req.params.id, req.user!.id]
+    );
 
-    if (!bot) {
+    if (botResult.rows.length === 0) {
       res.status(404).json({ success: false, error: 'Bot not found' });
       return;
     }
+
+    const botRow = botResult.rows[0];
+    const bot = {
+      id: botRow.id as string,
+      symbol: botRow.symbol as string,
+      baseAmount: parseFloat(botRow.base_amount as string),
+      interval: botRow.interval as string,
+      strategy: botRow.strategy as string,
+    };
 
     // Find pair ID
     const pairResult = await query(

@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
+import { query } from '../config/database.js';
 import logger from '../config/logger.js';
 
 const router = Router();
@@ -20,20 +21,9 @@ interface LeadTrader {
   bio: string;
 }
 
-interface CopyRelationship {
-  id: string;
-  userId: string;
-  leaderId: string;
-  allocation: number;
-  startedAt: string;
-  currentPnl: number;
-}
-
-// --- In-memory storage ---
+// --- Hardcoded mock lead traders ---
 const leadTraders: Map<string, LeadTrader> = new Map();
-const copyRelationships: Map<string, CopyRelationship> = new Map();
 
-// --- Seed 8 mock lead traders ---
 const mockLeaders: LeadTrader[] = [
   {
     id: 'lt-001',
@@ -182,7 +172,7 @@ router.get('/leaders/:id', (req: AuthenticatedRequest, res: Response) => {
 });
 
 // POST /follow/:id — Start copying a leader (auth required)
-router.post('/follow/:id', authenticate, (req: AuthenticatedRequest, res: Response) => {
+router.post('/follow/:id', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const leader = leadTraders.get(req.params.id);
     if (!leader) {
@@ -198,29 +188,36 @@ router.post('/follow/:id', authenticate, (req: AuthenticatedRequest, res: Respon
 
     const userId = req.user!.id;
 
-    // Check if already following
-    for (const rel of copyRelationships.values()) {
-      if (rel.userId === userId && rel.leaderId === req.params.id) {
-        res.status(409).json({ success: false, error: 'Already copying this leader' });
-        return;
-      }
+    // Check if already following (active relationship)
+    const existing = await query(
+      `SELECT id FROM copy_relationships WHERE follower_id = $1 AND leader_id = $2 AND active = true`,
+      [userId, req.params.id]
+    );
+
+    if (existing.rows.length > 0) {
+      res.status(409).json({ success: false, error: 'Already copying this leader' });
+      return;
     }
 
-    const relationship: CopyRelationship = {
-      id: `cr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      userId,
-      leaderId: req.params.id,
-      allocation,
-      startedAt: new Date().toISOString(),
-      currentPnl: 0,
-    };
+    const result = await query(
+      `INSERT INTO copy_relationships (follower_id, leader_id, allocation)
+       VALUES ($1, $2, $3)
+       RETURNING *`,
+      [userId, req.params.id, allocation]
+    );
 
-    copyRelationships.set(relationship.id, relationship);
-
-    // Increment copiers count
-    leader.copiers += 1;
-
-    res.json({ success: true, data: relationship });
+    const row = result.rows[0];
+    res.json({
+      success: true,
+      data: {
+        id: row.id,
+        userId: row.follower_id,
+        leaderId: row.leader_id,
+        allocation: parseFloat(row.allocation),
+        startedAt: row.started_at.toISOString(),
+        currentPnl: 0,
+      },
+    });
   } catch (err) {
     logger.error('Follow leader error', { error: (err as Error).message });
     res.status(500).json({ success: false, error: 'Internal server error' });
@@ -228,30 +225,19 @@ router.post('/follow/:id', authenticate, (req: AuthenticatedRequest, res: Respon
 });
 
 // DELETE /follow/:id — Stop copying (auth required)
-router.delete('/follow/:id', authenticate, (req: AuthenticatedRequest, res: Response) => {
+router.delete('/follow/:id', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
     const leaderId = req.params.id;
 
-    let foundId: string | null = null;
-    for (const [id, rel] of copyRelationships.entries()) {
-      if (rel.userId === userId && rel.leaderId === leaderId) {
-        foundId = id;
-        break;
-      }
-    }
+    const result = await query(
+      `DELETE FROM copy_relationships WHERE follower_id = $1 AND leader_id = $2 AND active = true RETURNING id`,
+      [userId, leaderId]
+    );
 
-    if (!foundId) {
+    if (result.rows.length === 0) {
       res.status(404).json({ success: false, error: 'Copy relationship not found' });
       return;
-    }
-
-    copyRelationships.delete(foundId);
-
-    // Decrement copiers count
-    const leader = leadTraders.get(leaderId);
-    if (leader && leader.copiers > 0) {
-      leader.copiers -= 1;
     }
 
     res.json({ success: true, message: 'Stopped copying leader' });
@@ -262,30 +248,35 @@ router.delete('/follow/:id', authenticate, (req: AuthenticatedRequest, res: Resp
 });
 
 // GET /active — My active copy relationships (auth required)
-router.get('/active', authenticate, (req: AuthenticatedRequest, res: Response) => {
+router.get('/active', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
-    const active: Array<CopyRelationship & { leaderName: string; leaderBadge: string }> = [];
 
-    for (const rel of copyRelationships.values()) {
-      if (rel.userId === userId) {
-        const leader = leadTraders.get(rel.leaderId);
-        // Simulate P&L based on leader's return rate
-        const elapsedHours =
-          (Date.now() - new Date(rel.startedAt).getTime()) / (1000 * 60 * 60);
-        const simulatedPnl =
-          leader
-            ? rel.allocation * (leader.totalReturn / 100) * (elapsedHours / (24 * 30))
-            : 0;
+    const result = await query(
+      `SELECT * FROM copy_relationships WHERE follower_id = $1 AND active = true`,
+      [userId]
+    );
 
-        active.push({
-          ...rel,
-          currentPnl: Math.round(simulatedPnl * 100) / 100,
-          leaderName: leader?.displayName ?? 'Unknown',
-          leaderBadge: leader?.badge ?? 'bronze',
-        });
-      }
-    }
+    const active = result.rows.map((rel: Record<string, unknown>) => {
+      const leader = leadTraders.get(rel.leader_id as string);
+      const startedAt = new Date(rel.started_at as string);
+      const elapsedHours = (Date.now() - startedAt.getTime()) / (1000 * 60 * 60);
+      const allocation = parseFloat(rel.allocation as string);
+      const simulatedPnl = leader
+        ? allocation * (leader.totalReturn / 100) * (elapsedHours / (24 * 30))
+        : 0;
+
+      return {
+        id: rel.id as string,
+        userId: rel.follower_id as string,
+        leaderId: rel.leader_id as string,
+        allocation,
+        startedAt: startedAt.toISOString(),
+        currentPnl: Math.round(simulatedPnl * 100) / 100,
+        leaderName: leader?.displayName ?? 'Unknown',
+        leaderBadge: leader?.badge ?? 'bronze',
+      };
+    });
 
     res.json({ success: true, data: active });
   } catch (err) {

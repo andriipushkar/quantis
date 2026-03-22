@@ -7,6 +7,7 @@ import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
 import { validateBody, copilotSchema } from '../validators/index.js';
 import { CircuitBreaker } from '@quantis/shared';
 import { getAllTickers, getTickerBySymbol } from '../utils/ticker-cache.js';
+import { computeRSI, computeEMA } from '../utils/indicators.js';
 
 const router = Router();
 
@@ -33,34 +34,6 @@ async function getTickerFromCache(symbol: string): Promise<{ price: number; chan
   const entry = await getTickerBySymbol(symbol);
   if (!entry) return null;
   return { price: entry.price ?? 0, change24h: entry.change24h ?? 0, volume: entry.volume ?? 0 };
-}
-
-// Compute RSI inline from closes
-function computeRSI(closes: number[], period: number = 14): number | null {
-  if (closes.length < period + 1) return null;
-  let gains = 0;
-  let losses = 0;
-  for (let i = 1; i <= period; i++) {
-    const diff = closes[closes.length - period - 1 + i] - closes[closes.length - period - 1 + i - 1];
-    if (diff > 0) gains += diff;
-    else losses += Math.abs(diff);
-  }
-  const avgGain = gains / period;
-  const avgLoss = losses / period;
-  if (avgLoss === 0) return 100;
-  const rs = avgGain / avgLoss;
-  return Math.round((100 - 100 / (1 + rs)) * 100) / 100;
-}
-
-// Compute EMA inline
-function computeEMA(closes: number[], period: number): number | null {
-  if (closes.length < period) return null;
-  const k = 2 / (period + 1);
-  let ema = closes[0];
-  for (let i = 1; i < closes.length; i++) {
-    ema = closes[i] * k + ema * (1 - k);
-  }
-  return Math.round(ema * 100) / 100;
 }
 
 // POST /ask — AI analysis endpoint

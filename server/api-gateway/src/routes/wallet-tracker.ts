@@ -1,28 +1,17 @@
 import { Router, Response } from 'express';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
+import { query } from '../config/database.js';
 import logger from '../config/logger.js';
 
 const router = Router();
 
 // --- Types ---
-interface TrackedWallet {
-  id: string;
-  userId: string;
-  address: string;
-  chain: 'ethereum' | 'solana' | 'bitcoin';
-  label?: string;
-  addedAt: string;
-}
-
 interface TokenHolding {
   token: string;
   amount: number;
   valueUsd: number;
   change24h: number;
 }
-
-// --- In-memory storage ---
-const wallets: Map<string, TrackedWallet> = new Map();
 
 // Mock token data by chain
 const MOCK_TOKENS: Record<string, { token: string; priceRange: [number, number]; amountRange: [number, number] }[]> = {
@@ -80,7 +69,7 @@ function generateHoldings(chain: string, addressSeed: string): TokenHolding[] {
 router.use(authenticate);
 
 // POST /track — Add wallet to track
-router.post('/track', (req: AuthenticatedRequest, res: Response) => {
+router.post('/track', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { address, chain, label } = req.body;
 
@@ -95,26 +84,36 @@ router.post('/track', (req: AuthenticatedRequest, res: Response) => {
       return;
     }
 
-    // Check for duplicates per user
-    for (const w of wallets.values()) {
-      if (w.userId === req.user!.id && w.address.toLowerCase() === address.toLowerCase() && w.chain === chain) {
-        res.status(409).json({ success: false, error: 'Wallet already tracked' });
-        return;
-      }
+    // Check for duplicates per user (UNIQUE constraint will also catch this)
+    const existing = await query(
+      `SELECT id FROM tracked_wallets WHERE user_id = $1 AND LOWER(address) = LOWER($2) AND chain = $3`,
+      [req.user!.id, address, chain]
+    );
+
+    if (existing.rows.length > 0) {
+      res.status(409).json({ success: false, error: 'Wallet already tracked' });
+      return;
     }
 
-    const id = `wallet-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const wallet: TrackedWallet = {
-      id,
-      userId: req.user!.id,
-      address,
-      chain,
-      label: label || undefined,
-      addedAt: new Date().toISOString(),
-    };
+    const result = await query(
+      `INSERT INTO tracked_wallets (user_id, address, chain, label)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [req.user!.id, address, chain, label || null]
+    );
 
-    wallets.set(id, wallet);
-    res.status(201).json({ success: true, data: wallet });
+    const r = result.rows[0];
+    res.status(201).json({
+      success: true,
+      data: {
+        id: r.id,
+        userId: r.user_id,
+        address: r.address,
+        chain: r.chain,
+        label: r.label || undefined,
+        addedAt: r.added_at.toISOString(),
+      },
+    });
   } catch (err) {
     logger.error('Wallet track error', { error: (err as Error).message });
     res.status(500).json({ success: false, error: 'Failed to track wallet' });
@@ -122,17 +121,27 @@ router.post('/track', (req: AuthenticatedRequest, res: Response) => {
 });
 
 // GET / — List tracked wallets
-router.get('/', (req: AuthenticatedRequest, res: Response) => {
+router.get('/', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const userWallets = Array.from(wallets.values())
-      .filter((w) => w.userId === req.user!.id)
-      .sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime());
+    const result = await query(
+      `SELECT * FROM tracked_wallets WHERE user_id = $1 ORDER BY added_at DESC`,
+      [req.user!.id]
+    );
 
-    // Attach total value to each wallet
-    const withTotals = userWallets.map((w) => {
-      const holdings = generateHoldings(w.chain, w.address);
+    const withTotals = result.rows.map((r: Record<string, unknown>) => {
+      const chain = r.chain as string;
+      const address = r.address as string;
+      const holdings = generateHoldings(chain, address);
       const totalValue = holdings.reduce((sum, h) => sum + h.valueUsd, 0);
-      return { ...w, totalValue: Math.round(totalValue * 100) / 100 };
+      return {
+        id: r.id as string,
+        userId: r.user_id as string,
+        address,
+        chain,
+        label: (r.label as string) || undefined,
+        addedAt: (r.added_at as Date).toISOString(),
+        totalValue: Math.round(totalValue * 100) / 100,
+      };
     });
 
     res.json({ success: true, data: withTotals });
@@ -143,15 +152,18 @@ router.get('/', (req: AuthenticatedRequest, res: Response) => {
 });
 
 // DELETE /:id — Remove tracked wallet
-router.delete('/:id', (req: AuthenticatedRequest, res: Response) => {
+router.delete('/:id', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const wallet = wallets.get(req.params.id);
-    if (!wallet || wallet.userId !== req.user!.id) {
+    const result = await query(
+      `DELETE FROM tracked_wallets WHERE id = $1 AND user_id = $2 RETURNING id`,
+      [req.params.id, req.user!.id]
+    );
+
+    if (result.rows.length === 0) {
       res.status(404).json({ success: false, error: 'Wallet not found' });
       return;
     }
 
-    wallets.delete(req.params.id);
     res.json({ success: true, message: 'Wallet removed' });
   } catch (err) {
     logger.error('Wallet delete error', { error: (err as Error).message });

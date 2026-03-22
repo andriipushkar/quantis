@@ -1,23 +1,12 @@
 import { Router, Response } from 'express';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
+import { query } from '../config/database.js';
 import logger from '../config/logger.js';
 import { validateBody, socialPostSchema } from '../validators/index.js';
 
 const router = Router();
 
 // --- Types ---
-interface SocialPost {
-  id: string;
-  userId: string;
-  userName: string;
-  type: 'trade_idea' | 'analysis' | 'comment';
-  content: string;
-  symbol?: string;
-  direction?: 'bullish' | 'bearish' | 'neutral';
-  likes: Set<string>;
-  createdAt: string;
-}
-
 interface SocialPostResponse {
   id: string;
   userId: string;
@@ -30,141 +19,18 @@ interface SocialPostResponse {
   createdAt: string;
 }
 
-// --- In-memory storage ---
-const posts: Map<string, SocialPost> = new Map();
-
-function serializePost(post: SocialPost): SocialPostResponse {
+function rowToPost(r: Record<string, unknown>): SocialPostResponse {
   return {
-    id: post.id,
-    userId: post.userId,
-    userName: post.userName,
-    type: post.type,
-    content: post.content,
-    symbol: post.symbol,
-    direction: post.direction,
-    likeCount: post.likes.size,
-    createdAt: post.createdAt,
+    id: r.id as string,
+    userId: r.user_id as string,
+    userName: r.user_name as string,
+    type: r.type as 'trade_idea' | 'analysis' | 'comment',
+    content: r.content as string,
+    symbol: (r.symbol as string) || undefined,
+    direction: (r.direction as 'bullish' | 'bearish' | 'neutral') || undefined,
+    likeCount: parseInt(r.like_count as string, 10) || 0,
+    createdAt: (r.created_at as Date).toISOString(),
   };
-}
-
-// --- Seed 10 mock posts ---
-const now = Date.now();
-const mockPosts: Omit<SocialPost, 'likes'>[] = [
-  {
-    id: 'sp-001',
-    userId: 'user-mock-1',
-    userName: 'CryptoAlpha',
-    type: 'trade_idea',
-    content:
-      'BTC forming a classic bull flag on the 4H chart. Expecting a breakout above 71k with targets at 73.5k. Stop below 69.2k. Risk/reward is 2.8:1.',
-    symbol: 'BTCUSDT',
-    direction: 'bullish',
-    createdAt: new Date(now - 15 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'sp-002',
-    userId: 'user-mock-2',
-    userName: 'DeFiWhale',
-    type: 'analysis',
-    content:
-      'ETH/BTC ratio hitting multi-month support at 0.046. Historically this level has held 4 times in the past year. If it breaks, could see ETH underperformance accelerate toward 0.042.',
-    symbol: 'ETHUSDT',
-    direction: 'neutral',
-    createdAt: new Date(now - 45 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'sp-003',
-    userId: 'user-mock-3',
-    userName: 'SwingMaster_X',
-    type: 'trade_idea',
-    content:
-      'SOL breaking out of the descending wedge on daily. Volume confirming. Entered long at 142 with TP at 165 and SL at 134. Strong conviction play.',
-    symbol: 'SOLUSDT',
-    direction: 'bullish',
-    createdAt: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'sp-004',
-    userId: 'user-mock-4',
-    userName: 'QuantBot_v2',
-    type: 'analysis',
-    content:
-      'On-chain data shows whale wallets accumulating LINK aggressively over the past 72h. Top 100 wallets increased holdings by 4.2M tokens. Oracle narrative heating up.',
-    symbol: 'LINKUSDT',
-    direction: 'bullish',
-    createdAt: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'sp-005',
-    userId: 'user-mock-5',
-    userName: 'NarrativeHunter',
-    type: 'comment',
-    content:
-      'Market feels overextended after 3 consecutive green weeks. Fear & Greed at 78. Taking some profit on alts and rotating into stables. Will re-enter on any meaningful pullback to the 20-day EMA.',
-    createdAt: new Date(now - 4 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'sp-006',
-    userId: 'user-mock-6',
-    userName: 'GridGuru',
-    type: 'trade_idea',
-    content:
-      'DOGE showing a classic range between 0.14 and 0.17 for the past 10 days. Running a grid bot with 15 levels. Collecting 0.3-0.5% per grid. Perfect for the current low-vol environment.',
-    symbol: 'DOGEUSDT',
-    direction: 'neutral',
-    createdAt: new Date(now - 5 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'sp-007',
-    userId: 'user-mock-7',
-    userName: 'SteadyEddie',
-    type: 'analysis',
-    content:
-      'BTC dominance breaking above 54% resistance. This typically signals an alt-season cooldown. Historically, BTC.D above 55% has led to 2-4 weeks of alt underperformance. Staying BTC-heavy for now.',
-    symbol: 'BTCUSDT',
-    direction: 'bullish',
-    createdAt: new Date(now - 7 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'sp-008',
-    userId: 'user-mock-8',
-    userName: 'MoonShot_Pro',
-    type: 'trade_idea',
-    content:
-      'AVAX looks weak. Head and shoulders forming on the daily with neckline at 32.50. If it breaks, measured move targets 26. Shorting with tight risk above 35.',
-    symbol: 'AVAXUSDT',
-    direction: 'bearish',
-    createdAt: new Date(now - 8 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'sp-009',
-    userId: 'user-mock-1',
-    userName: 'CryptoAlpha',
-    type: 'comment',
-    content:
-      'Funding rates across the board are turning negative after the flush. This is actually constructive for longs — the market has reset leverage. Watch for a sharp bounce in the next 24-48h.',
-    createdAt: new Date(now - 10 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'sp-010',
-    userId: 'user-mock-3',
-    userName: 'SwingMaster_X',
-    type: 'analysis',
-    content:
-      'XRP cleared the 0.62 resistance with massive volume. This was a multi-month consolidation breakout. Next major resistance at 0.74. Pullbacks to 0.62 are a buy zone now.',
-    symbol: 'XRPUSDT',
-    direction: 'bullish',
-    createdAt: new Date(now - 12 * 60 * 60 * 1000).toISOString(),
-  },
-];
-
-for (const mock of mockPosts) {
-  const likeCount = Math.floor(Math.random() * 30) + 1;
-  const likes = new Set<string>();
-  for (let i = 0; i < likeCount; i++) {
-    likes.add(`user-fake-${i}`);
-  }
-  posts.set(mock.id, { ...mock, likes });
 }
 
 // GET /feed — List posts (paginated, newest first)
@@ -174,18 +40,30 @@ router.get('/feed', (_req: AuthenticatedRequest, res: Response) => {
     const limit = Math.min(parseInt((_req.query.limit as string) || '20', 10), 50);
     const offset = (page - 1) * limit;
 
-    const allPosts = Array.from(posts.values()).sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    // Use two queries: count + paginated data
+    const countPromise = query(`SELECT COUNT(*) AS total FROM social_posts`);
+    const dataPromise = query(
+      `SELECT sp.*,
+              COALESCE((SELECT COUNT(*) FROM social_likes sl WHERE sl.post_id = sp.id), 0) AS like_count
+       FROM social_posts sp
+       ORDER BY sp.created_at DESC
+       LIMIT $1 OFFSET $2`,
+      [limit, offset]
     );
 
-    const paginated = allPosts.slice(offset, offset + limit);
-    const total = allPosts.length;
-
-    res.json({
-      success: true,
-      data: paginated.map(serializePost),
-      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
-    });
+    Promise.all([countPromise, dataPromise])
+      .then(([countResult, dataResult]) => {
+        const total = parseInt(countResult.rows[0].total, 10);
+        res.json({
+          success: true,
+          data: dataResult.rows.map(rowToPost),
+          pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+        });
+      })
+      .catch((err) => {
+        logger.error('Get feed error', { error: (err as Error).message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
+      });
   } catch (err) {
     logger.error('Get feed error', { error: (err as Error).message });
     res.status(500).json({ success: false, error: 'Internal server error' });
@@ -193,25 +71,25 @@ router.get('/feed', (_req: AuthenticatedRequest, res: Response) => {
 });
 
 // POST /post — Create post (auth required)
-router.post('/post', authenticate, validateBody(socialPostSchema), (req: AuthenticatedRequest, res: Response) => {
+router.post('/post', authenticate, validateBody(socialPostSchema), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { type, content, symbol, direction } = req.body;
 
-    const post: SocialPost = {
-      id: `sp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      userId: req.user!.id,
-      userName: req.user!.email.split('@')[0],
-      type,
-      content: content.trim(),
-      symbol: symbol?.toUpperCase(),
-      direction,
-      likes: new Set(),
-      createdAt: new Date().toISOString(),
-    };
+    const result = await query(
+      `INSERT INTO social_posts (user_id, user_name, type, content, symbol, direction)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *, 0 AS like_count`,
+      [
+        req.user!.id,
+        req.user!.email.split('@')[0],
+        type,
+        content.trim(),
+        symbol?.toUpperCase() || null,
+        direction || null,
+      ]
+    );
 
-    posts.set(post.id, post);
-
-    res.json({ success: true, data: serializePost(post) });
+    res.json({ success: true, data: rowToPost(result.rows[0]) });
   } catch (err) {
     logger.error('Create post error', { error: (err as Error).message });
     res.status(500).json({ success: false, error: 'Internal server error' });
@@ -219,26 +97,46 @@ router.post('/post', authenticate, validateBody(socialPostSchema), (req: Authent
 });
 
 // POST /post/:id/like — Toggle like (auth required)
-router.post('/post/:id/like', authenticate, (req: AuthenticatedRequest, res: Response) => {
+router.post('/post/:id/like', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const post = posts.get(req.params.id);
-    if (!post) {
+    const postId = req.params.id;
+    const userId = req.user!.id;
+
+    // Check post exists
+    const postCheck = await query(`SELECT id FROM social_posts WHERE id = $1`, [postId]);
+    if (postCheck.rows.length === 0) {
       res.status(404).json({ success: false, error: 'Post not found' });
       return;
     }
 
-    const userId = req.user!.id;
-    const liked = post.likes.has(userId);
+    // Check if already liked
+    const likeCheck = await query(
+      `SELECT 1 FROM social_likes WHERE post_id = $1 AND user_id = $2`,
+      [postId, userId]
+    );
 
-    if (liked) {
-      post.likes.delete(userId);
+    let liked: boolean;
+    if (likeCheck.rows.length > 0) {
+      // Unlike
+      await query(`DELETE FROM social_likes WHERE post_id = $1 AND user_id = $2`, [postId, userId]);
+      liked = false;
     } else {
-      post.likes.add(userId);
+      // Like
+      await query(
+        `INSERT INTO social_likes (post_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [postId, userId]
+      );
+      liked = true;
     }
+
+    const countResult = await query(
+      `SELECT COUNT(*) AS cnt FROM social_likes WHERE post_id = $1`,
+      [postId]
+    );
 
     res.json({
       success: true,
-      data: { liked: !liked, likeCount: post.likes.size },
+      data: { liked, likeCount: parseInt(countResult.rows[0].cnt, 10) },
     });
   } catch (err) {
     logger.error('Toggle like error', { error: (err as Error).message });
@@ -247,20 +145,21 @@ router.post('/post/:id/like', authenticate, (req: AuthenticatedRequest, res: Res
 });
 
 // GET /trending — Top 5 most-discussed symbols
-router.get('/trending', (_req: AuthenticatedRequest, res: Response) => {
+router.get('/trending', async (_req: AuthenticatedRequest, res: Response) => {
   try {
-    const symbolCounts: Record<string, number> = {};
+    const result = await query(
+      `SELECT symbol, COUNT(*) AS mentions
+       FROM social_posts
+       WHERE symbol IS NOT NULL
+       GROUP BY symbol
+       ORDER BY mentions DESC
+       LIMIT 5`
+    );
 
-    for (const post of posts.values()) {
-      if (post.symbol) {
-        symbolCounts[post.symbol] = (symbolCounts[post.symbol] || 0) + 1;
-      }
-    }
-
-    const trending = Object.entries(symbolCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([symbol, mentions]) => ({ symbol, mentions }));
+    const trending = result.rows.map((r: Record<string, unknown>) => ({
+      symbol: r.symbol as string,
+      mentions: parseInt(r.mentions as string, 10),
+    }));
 
     res.json({ success: true, data: trending });
   } catch (err) {
