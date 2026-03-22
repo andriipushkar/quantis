@@ -28,7 +28,7 @@ jobs:
         run: npx -w client tsc --noEmit
 
       - name: Lint
-        run: npx eslint . --ext .ts,.tsx --max-warnings 0 || true
+        run: npx eslint . --ext .ts,.tsx --max-warnings 0
 
   test:
     name: Tests (${{ matrix.workspace }})
@@ -39,6 +39,7 @@ jobs:
       matrix:
         workspace:
           - shared
+          - server/api-gateway
           - server/analysis-engine
           - server/data-collector
           - server/alert-service

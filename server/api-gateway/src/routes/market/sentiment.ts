@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { query } from '../../config/database.js';
 import redis from '../../config/redis.js';
 import logger from '../../config/logger.js';
+import { getAllTickers } from '../../utils/ticker-cache.js';
 
 const router = Router();
 
@@ -26,32 +27,15 @@ router.get('/fear-greed', async (_req: Request, res: Response) => {
        WHERE tp.is_active = true`
     );
 
-    // 2. Fetch tickers from Redis
-    const tickerKeys = await redis.keys('ticker:*:*');
+    // 2. Fetch tickers from shared cache
+    const allTickers = await getAllTickers();
     const tickerMap: Record<string, { price: number; change24h: number; volume: number }> = {};
-
-    if (tickerKeys.length > 0) {
-      const pipeline = redis.pipeline();
-      for (const key of tickerKeys) {
-        pipeline.get(key);
-      }
-      const tickerResults = await pipeline.exec();
-      tickerKeys.forEach((key, i) => {
-        const value = tickerResults?.[i]?.[1];
-        if (typeof value === 'string') {
-          try {
-            const parsed = JSON.parse(value);
-            const parts = key.split(':');
-            const tickerExchange = parts[1];
-            const tickerSymbol = parts[2];
-            tickerMap[`${tickerExchange}:${tickerSymbol}`] = {
-              price: parsed.price ?? 0,
-              change24h: parsed.change24h ?? 0,
-              volume: parsed.volume ?? 0,
-            };
-          } catch { /* skip */ }
-        }
-      });
+    for (const [key, entry] of allTickers) {
+      tickerMap[key] = {
+        price: entry.price,
+        change24h: entry.change24h,
+        volume: entry.volume,
+      };
     }
 
     // 3. Compute RSI for each pair and collect metrics
@@ -248,30 +232,16 @@ router.get('/narratives', async (_req: Request, res: Response) => {
       return;
     }
 
-    // Fetch all tickers from Redis
-    const tickerKeys = await redis.keys('ticker:*:*');
+    // Fetch all tickers from shared cache (keyed by symbol for narrative lookup)
+    const allTickersNarr = await getAllTickers();
     const tickerMap: Record<string, { price: number; change24h: number; volume: number }> = {};
-
-    if (tickerKeys.length > 0) {
-      const pipeline = redis.pipeline();
-      for (const key of tickerKeys) {
-        pipeline.get(key);
-      }
-      const tickerResults = await pipeline.exec();
-      tickerKeys.forEach((key, i) => {
-        const value = tickerResults?.[i]?.[1];
-        if (typeof value === 'string') {
-          try {
-            const parsed = JSON.parse(value);
-            const parts = key.split(':');
-            tickerMap[parts[2]] = {
-              price: parsed.price ?? 0,
-              change24h: parsed.change24h ?? 0,
-              volume: parsed.volume ?? 0,
-            };
-          } catch { /* skip */ }
-        }
-      });
+    for (const [, entry] of allTickersNarr) {
+      // Key by symbol (last exchange wins) — matches original behavior
+      tickerMap[entry.symbol] = {
+        price: entry.price,
+        change24h: entry.change24h,
+        volume: entry.volume,
+      };
     }
 
     // Get active pairs for RSI computation
@@ -387,30 +357,15 @@ router.get('/breadth', async (_req: Request, res: Response) => {
        WHERE tp.is_active = true`
     );
 
-    // Fetch tickers
-    const tickerKeys = await redis.keys('ticker:*:*');
+    // Fetch tickers from shared cache
+    const allTickersBreadth = await getAllTickers();
     const tickerMap: Record<string, { price: number; change24h: number; volume: number }> = {};
-
-    if (tickerKeys.length > 0) {
-      const pipeline = redis.pipeline();
-      for (const key of tickerKeys) {
-        pipeline.get(key);
-      }
-      const tickerResults = await pipeline.exec();
-      tickerKeys.forEach((key, i) => {
-        const value = tickerResults?.[i]?.[1];
-        if (typeof value === 'string') {
-          try {
-            const parsed = JSON.parse(value);
-            const parts = key.split(':');
-            tickerMap[`${parts[1]}:${parts[2]}`] = {
-              price: parsed.price ?? 0,
-              change24h: parsed.change24h ?? 0,
-              volume: parsed.volume ?? 0,
-            };
-          } catch { /* skip */ }
-        }
-      });
+    for (const [key, entry] of allTickersBreadth) {
+      tickerMap[key] = {
+        price: entry.price,
+        change24h: entry.change24h,
+        volume: entry.volume,
+      };
     }
 
     let advancing = 0;

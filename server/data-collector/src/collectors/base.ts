@@ -86,12 +86,15 @@ export abstract class BaseCollector {
     try {
       await Promise.all([
         this.redis.publish('ticker:update', payload),
+        // Individual key (legacy, 10s TTL)
         this.redis.set(
           `ticker:${data.exchange}:${symbol}`,
           payload,
           'EX',
           10
         ),
+        // Snapshot hash (O(1) lookup, no redis.keys() needed)
+        this.redis.hset('ticker:snapshot', `${data.exchange}:${symbol}`, payload),
       ]);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

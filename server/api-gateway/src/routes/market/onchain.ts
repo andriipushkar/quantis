@@ -1,25 +1,48 @@
 import { Router, Request, Response } from 'express';
 import redis from '../../config/redis.js';
 import logger from '../../config/logger.js';
+import { CircuitBreaker } from '@quantis/shared';
 
 const router = Router();
 
-// --- DeFi TVL Tracker ---
+// Circuit breaker for external API calls
+const defiLlamaBreaker = new CircuitBreaker('defillama', {
+  failureThreshold: 3,
+  resetTimeout: 60_000,
+  onStateChange: (name, from, to) => {
+    logger.warn(`Circuit breaker "${name}" transitioned ${from} → ${to}`);
+  },
+});
 
-const DEFI_PROTOCOLS = [
-  { name: 'Lido', tvl: 28_400_000_000, chain: 'Ethereum', category: 'Liquid Staking', apy: 3.8, riskRating: 2 },
-  { name: 'Aave', tvl: 12_500_000_000, chain: 'Ethereum', category: 'Lending', apy: 3.2, riskRating: 2 },
-  { name: 'MakerDAO', tvl: 8_700_000_000, chain: 'Ethereum', category: 'CDP', apy: 5.0, riskRating: 2 },
-  { name: 'Uniswap', tvl: 5_800_000_000, chain: 'Ethereum', category: 'DEX', apy: 12.5, riskRating: 3 },
-  { name: 'Curve', tvl: 3_200_000_000, chain: 'Multi', category: 'DEX', apy: 8.1, riskRating: 3 },
-  { name: 'Compound', tvl: 2_800_000_000, chain: 'Ethereum', category: 'Lending', apy: 2.9, riskRating: 2 },
-  { name: 'PancakeSwap', tvl: 2_100_000_000, chain: 'BSC', category: 'DEX', apy: 15.2, riskRating: 3 },
-  { name: 'Raydium', tvl: 1_200_000_000, chain: 'Solana', category: 'DEX', apy: 18.5, riskRating: 4 },
-  { name: 'Jupiter', tvl: 900_000_000, chain: 'Solana', category: 'Aggregator', apy: 0, riskRating: 3 },
-  { name: 'GMX', tvl: 700_000_000, chain: 'Arbitrum', category: 'Derivatives', apy: 22.0, riskRating: 5 },
+// --- DeFi TVL Tracker (Real data from DeFiLlama API) ---
+
+// Fallback data used when DeFiLlama API is unavailable
+const DEFI_FALLBACK = [
+  { name: 'Lido', tvl: 28_400_000_000, chain: 'Ethereum', category: 'Liquid Staking' },
+  { name: 'Aave', tvl: 12_500_000_000, chain: 'Multi-chain', category: 'Lending' },
+  { name: 'MakerDAO', tvl: 8_700_000_000, chain: 'Ethereum', category: 'CDP' },
+  { name: 'Uniswap', tvl: 5_800_000_000, chain: 'Multi-chain', category: 'Dexes' },
+  { name: 'Curve', tvl: 3_200_000_000, chain: 'Multi-chain', category: 'Dexes' },
+  { name: 'Compound', tvl: 2_800_000_000, chain: 'Ethereum', category: 'Lending' },
+  { name: 'PancakeSwap', tvl: 2_100_000_000, chain: 'BSC', category: 'Dexes' },
+  { name: 'Raydium', tvl: 1_200_000_000, chain: 'Solana', category: 'Dexes' },
+  { name: 'Jupiter', tvl: 900_000_000, chain: 'Solana', category: 'Dexes' },
+  { name: 'GMX', tvl: 700_000_000, chain: 'Arbitrum', category: 'Derivatives' },
 ];
 
-// GET /defi
+interface DefiLlamaProtocol {
+  name: string;
+  tvl: number;
+  chain: string;
+  chains: string[];
+  category: string;
+  change_1d?: number;
+  change_7d?: number;
+  symbol?: string;
+  url?: string;
+}
+
+// GET /defi — Real DeFi TVL data from DeFiLlama (free, no API key)
 router.get('/defi', async (_req: Request, res: Response) => {
   try {
     // Check cache (10 min)
@@ -29,35 +52,49 @@ router.get('/defi', async (_req: Request, res: Response) => {
       return;
     }
 
-    // Seeded random for stable values within cache window
-    const hourSeed = new Date().toISOString().slice(0, 13);
-    function seededRandom(seed: string): number {
-      let h = 0;
-      for (let i = 0; i < seed.length; i++) {
-        h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
-      }
-      return (Math.abs(h) % 10000) / 10000;
-    }
+    const protocols = await defiLlamaBreaker.call(
+      async () => {
+        const response = await fetch('https://api.llama.fi/protocols');
+        if (!response.ok) throw new Error(`DeFiLlama API ${response.status}`);
+        const data = (await response.json()) as DefiLlamaProtocol[];
 
-    const protocols = DEFI_PROTOCOLS.map((p) => {
-      const rand = seededRandom(p.name + hourSeed);
-      const tvlChange24h = Math.round((rand * 10 - 5) * 100) / 100; // +-5%
-      return { ...p, tvlChange24h };
-    });
+        // Take top 30 by TVL
+        return data
+          .filter((p) => p.tvl > 0)
+          .sort((a, b) => b.tvl - a.tvl)
+          .slice(0, 30)
+          .map((p) => ({
+            name: p.name,
+            symbol: p.symbol || '',
+            tvl: Math.round(p.tvl),
+            chain: p.chains?.length > 1 ? 'Multi-chain' : (p.chain || 'Unknown'),
+            category: p.category || 'Other',
+            tvlChange24h: p.change_1d ? Math.round(p.change_1d * 100) / 100 : 0,
+            tvlChange7d: p.change_7d ? Math.round(p.change_7d * 100) / 100 : 0,
+            url: p.url,
+          }));
+      },
+      () => {
+        logger.warn('DeFiLlama circuit breaker fallback — using cached data');
+        return DEFI_FALLBACK.map((p) => ({
+          ...p,
+          symbol: '',
+          tvlChange24h: 0,
+          tvlChange7d: 0,
+          url: undefined,
+        }));
+      },
+    );
 
     const totalTvl = protocols.reduce((sum, p) => sum + p.tvl, 0);
-    const apyProtos = protocols.filter((p) => p.apy > 0);
-    const avgApy = apyProtos.length > 0
-      ? Math.round((apyProtos.reduce((sum, p) => sum + p.apy, 0) / apyProtos.length) * 100) / 100
-      : 0;
 
     const response = {
       success: true,
       data: {
         protocols,
         totalTvl,
-        avgApy,
         protocolCount: protocols.length,
+        source: 'defillama',
       },
     };
 

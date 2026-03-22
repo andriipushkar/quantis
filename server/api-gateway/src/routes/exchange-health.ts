@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
-import redis from '../config/redis.js';
 import logger from '../config/logger.js';
+import { getTickersByExchange } from '../utils/ticker-cache.js';
 
 const router = Router();
 
@@ -23,36 +23,23 @@ router.get('/health', async (_req: Request, res: Response) => {
     const results: ExchangeHealth[] = [];
 
     for (const exchange of exchanges) {
-      // Get all ticker keys for this exchange
-      const keys = await redis.keys(`ticker:${exchange}:*`);
-      const activePairs = keys.length;
+      // Get all tickers for this exchange from shared cache
+      const exchangeTickers = await getTickersByExchange(exchange);
+      const activePairs = exchangeTickers.size;
 
       let latestTimestamp: number | null = null;
       let freshCount = 0;
 
-      if (keys.length > 0) {
-        const pipeline = redis.pipeline();
-        for (const key of keys) {
-          pipeline.get(key);
-        }
-        const tickerResults = await pipeline.exec();
-
+      if (activePairs > 0) {
         const now = Date.now();
-
-        for (let i = 0; i < keys.length; i++) {
-          const value = tickerResults?.[i]?.[1];
-          if (typeof value === 'string') {
-            try {
-              const parsed = JSON.parse(value);
-              const ts = parsed.timestamp || 0;
-              if (ts > (latestTimestamp || 0)) {
-                latestTimestamp = ts;
-              }
-              // Fresh if within 60 seconds
-              if (now - ts < 60000) {
-                freshCount++;
-              }
-            } catch { /* skip */ }
+        for (const [, entry] of exchangeTickers) {
+          const ts = entry.timestamp || 0;
+          if (ts > (latestTimestamp || 0)) {
+            latestTimestamp = ts;
+          }
+          // Fresh if within 60 seconds
+          if (now - ts < 60000) {
+            freshCount++;
           }
         }
       }

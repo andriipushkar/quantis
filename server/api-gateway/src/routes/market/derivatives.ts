@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { query } from '../../config/database.js';
 import redis from '../../config/redis.js';
 import logger from '../../config/logger.js';
+import { getAllTickers } from '../../utils/ticker-cache.js';
 
 const router = Router();
 
@@ -24,31 +25,16 @@ router.get('/funding-rates', async (_req: Request, res: Response) => {
        ORDER BY tp.symbol ASC`
     );
 
-    // Fetch tickers from Redis
-    const tickerKeys = await redis.keys('ticker:*:*');
+    // Fetch tickers from shared cache
+    const allTickers = await getAllTickers();
     const tickerMap: Record<string, { price: number; change24h: number; volume: number; timestamp?: number }> = {};
-
-    if (tickerKeys.length > 0) {
-      const pipeline = redis.pipeline();
-      for (const key of tickerKeys) {
-        pipeline.get(key);
-      }
-      const tickerResults = await pipeline.exec();
-      tickerKeys.forEach((key, i) => {
-        const value = tickerResults?.[i]?.[1];
-        if (typeof value === 'string') {
-          try {
-            const parsed = JSON.parse(value);
-            const parts = key.split(':');
-            tickerMap[`${parts[1]}:${parts[2]}`] = {
-              price: parsed.price ?? 0,
-              change24h: parsed.change24h ?? 0,
-              volume: parsed.volume ?? 0,
-              timestamp: parsed.timestamp,
-            };
-          } catch { /* skip */ }
-        }
-      });
+    for (const [key, entry] of allTickers) {
+      tickerMap[key] = {
+        price: entry.price,
+        change24h: entry.change24h,
+        volume: entry.volume,
+        timestamp: entry.timestamp,
+      };
     }
 
     const rates: Array<{
@@ -154,30 +140,15 @@ router.get('/open-interest', async (_req: Request, res: Response) => {
        ORDER BY tp.symbol ASC`
     );
 
-    // Fetch tickers
-    const tickerKeys = await redis.keys('ticker:*:*');
+    // Fetch tickers from shared cache
+    const allTickersOI = await getAllTickers();
     const tickerMap: Record<string, { price: number; change24h: number; volume: number }> = {};
-
-    if (tickerKeys.length > 0) {
-      const pipeline = redis.pipeline();
-      for (const key of tickerKeys) {
-        pipeline.get(key);
-      }
-      const tickerResults = await pipeline.exec();
-      tickerKeys.forEach((key, i) => {
-        const value = tickerResults?.[i]?.[1];
-        if (typeof value === 'string') {
-          try {
-            const parsed = JSON.parse(value);
-            const parts = key.split(':');
-            tickerMap[`${parts[1]}:${parts[2]}`] = {
-              price: parsed.price ?? 0,
-              change24h: parsed.change24h ?? 0,
-              volume: parsed.volume ?? 0,
-            };
-          } catch { /* skip */ }
-        }
-      });
+    for (const [key, entry] of allTickersOI) {
+      tickerMap[key] = {
+        price: entry.price,
+        change24h: entry.change24h,
+        volume: entry.volume,
+      };
     }
 
     const oiData: Array<{

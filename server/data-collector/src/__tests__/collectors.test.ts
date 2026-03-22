@@ -33,6 +33,7 @@ function createMockRedis() {
   return {
     publish: jest.fn().mockResolvedValue(1),
     set: jest.fn().mockResolvedValue('OK'),
+    hset: jest.fn().mockResolvedValue(1),
     get: jest.fn().mockResolvedValue(null),
   } as any;
 }

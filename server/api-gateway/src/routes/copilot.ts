@@ -6,6 +6,7 @@ import logger from '../config/logger.js';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
 import { validateBody, copilotSchema } from '../validators/index.js';
 import { CircuitBreaker } from '@quantis/shared';
+import { getAllTickers } from '../utils/ticker-cache.js';
 
 const router = Router();
 
@@ -144,23 +145,12 @@ router.post('/ask', authenticate, validateBody(copilotSchema), async (req: Authe
     // Compute Fear & Greed score inline (simplified)
     let fearGreed = 50;
     try {
-      const fgKeys = await redis.keys('ticker:*:*');
-      if (fgKeys.length > 0) {
-        const pipeline = redis.pipeline();
-        for (const key of fgKeys) {
-          pipeline.get(key);
-        }
-        const fgResults = await pipeline.exec();
+      const allTickers = await getAllTickers();
+      if (allTickers.size > 0) {
         const changes: number[] = [];
-        fgKeys.forEach((key, i) => {
-          const value = fgResults?.[i]?.[1];
-          if (typeof value === 'string') {
-            try {
-              const parsed = JSON.parse(value);
-              if (parsed.change24h !== undefined) changes.push(parsed.change24h);
-            } catch { /* skip */ }
-          }
-        });
+        for (const [, entry] of allTickers) {
+          if (entry.change24h !== undefined) changes.push(entry.change24h);
+        }
         if (changes.length > 0) {
           const bullishPct = (changes.filter((c) => c > 0).length / changes.length) * 100;
           fearGreed = Math.max(0, Math.min(100, Math.round(bullishPct)));
