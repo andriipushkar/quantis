@@ -10,6 +10,7 @@ import pool from './config/database.js';
 import { publisherClient } from './config/redis.js';
 import calculator from './indicators/calculator.js';
 import { calculateConfluence, type ConfluenceInput } from './confluence/engine.js';
+import strategyEngine from './strategies/index.js';
 
 const PORT = parseInt(process.env.PORT || '3003', 10);
 const app = express();
@@ -69,21 +70,13 @@ analysisQueue.process('analyze-pair', 5, async (job) => {
   const volumes = candles.map((c: CandleRow) => parseFloat(c.volume));
 
   const rsi = calculator.calculateRSI(closes, 14);
-  const ema9 = calculator.calculateEMA(closes, 9);
-  const ema21 = calculator.calculateEMA(closes, 21);
   const atr = calculator.calculateATR(highs, lows, closes, 14);
 
-  if (rsi.length === 0 || ema9.length === 0 || ema21.length === 0 || atr.length === 0) return;
+  if (rsi.length === 0 || atr.length === 0) return;
 
   const currentRSI = rsi[rsi.length - 1];
-  const currentEMA9 = ema9[ema9.length - 1];
-  const currentEMA21 = ema21[ema21.length - 1];
-  const prevEMA9 = ema9.length > 1 ? ema9[ema9.length - 2] : currentEMA9;
-  const prevEMA21 = ema21.length > 1 ? ema21[ema21.length - 2] : currentEMA21;
   const currentATR = atr[atr.length - 1];
   const currentPrice = closes[closes.length - 1];
-  const avgVolume = volumes.slice(-20).reduce((s, v) => s + v, 0) / 20;
-  const currentVolume = volumes[volumes.length - 1];
 
   // ── Confluence Score ─────────────────────────────────────────────
   try {
@@ -179,27 +172,30 @@ analysisQueue.process('analyze-pair', 5, async (job) => {
   );
   if (existing.rows.length > 0) return;
 
-  // Strategy 1: Trend Following — EMA crossover + RSI confirmation
-  const emaCrossUp = prevEMA9 <= prevEMA21 && currentEMA9 > currentEMA21;
-  const emaCrossDown = prevEMA9 >= prevEMA21 && currentEMA9 < currentEMA21;
-  const volumeSurge = currentVolume > avgVolume * 1.3;
+  // ── Run all strategies via StrategyEngine ─────────────────────────
+  const strategyResults = strategyEngine.evaluateAll({
+    closes,
+    highs,
+    lows,
+    volumes,
+    currentPrice,
+    currentATR,
+  });
 
-  if (emaCrossUp && currentRSI > 45 && currentRSI < 75 && volumeSurge) {
-    await createSignal(pair, 'buy', 'trend_following', currentPrice, currentATR, currentRSI);
-    return;
-  }
-  if (emaCrossDown && currentRSI < 55 && currentRSI > 25 && volumeSurge) {
-    await createSignal(pair, 'sell', 'trend_following', currentPrice, currentATR, currentRSI);
-    return;
-  }
-
-  // Strategy 2: Mean Reversion — RSI extremes
-  if (currentRSI < 25) {
-    await createSignal(pair, 'buy', 'mean_reversion', currentPrice, currentATR, currentRSI);
-    return;
-  }
-  if (currentRSI > 75) {
-    await createSignal(pair, 'sell', 'mean_reversion', currentPrice, currentATR, currentRSI);
+  // Pick the highest-confidence signal (already sorted desc by evaluateAll)
+  if (strategyResults.length > 0) {
+    const best = strategyResults[0];
+    await createSignal(
+      pair,
+      best.type.toLowerCase() as 'buy' | 'sell',
+      best.strategy,
+      currentPrice,
+      currentATR,
+      currentRSI,
+      best.confidence,
+      best.sources,
+      best.reasoning,
+    );
     return;
   }
 });
@@ -245,6 +241,9 @@ async function createSignal(
   price: number,
   atr: number,
   rsi: number,
+  overrideConfidence?: number,
+  overrideSources?: string[],
+  overrideReasoning?: string,
 ): Promise<void> {
   const slDistance = atr * 2;
   const sl = type === 'buy' ? price - slDistance : price + slDistance;
@@ -252,19 +251,19 @@ async function createSignal(
   const tp2 = type === 'buy' ? price + slDistance * 2 : price - slDistance * 2;
   const tp3 = type === 'buy' ? price + slDistance * 3 : price - slDistance * 3;
 
-  const confidence = Math.min(95, Math.round(
+  const confidence = overrideConfidence ?? Math.min(95, Math.round(
     50 + (type === 'buy' ? (50 - rsi) * 0.5 : (rsi - 50) * 0.5) + (strategy === 'trend_following' ? 10 : 5)
   ));
 
   const strength = confidence >= 75 ? 'strong' : confidence >= 55 ? 'medium' : 'weak';
 
-  const sources = strategy === 'trend_following'
+  const sources = overrideSources ?? (strategy === 'trend_following'
     ? ['EMA(9)', 'EMA(21)', 'RSI(14)', 'Volume']
-    : ['RSI(14)', 'Mean Reversion'];
+    : ['RSI(14)', 'Mean Reversion']);
 
-  const reasoning = strategy === 'trend_following'
+  const reasoning = overrideReasoning ?? (strategy === 'trend_following'
     ? `EMA(9) crossed ${type === 'buy' ? 'above' : 'below'} EMA(21) with RSI at ${rsi.toFixed(1)} and volume surge confirmed.`
-    : `RSI(14) at ${rsi.toFixed(1)} indicates ${type === 'buy' ? 'oversold' : 'overbought'} conditions. Mean reversion expected.`;
+    : `RSI(14) at ${rsi.toFixed(1)} indicates ${type === 'buy' ? 'oversold' : 'overbought'} conditions. Mean reversion expected.`);
 
   const result = await pool.query(
     `INSERT INTO signals (id, pair_id, exchange_id, strategy, type, strength, entry_price, stop_loss, tp1, tp2, tp3, confidence, sources_json, reasoning, timeframe, status, expires_at)

@@ -3,10 +3,317 @@ import { query } from '../../config/database.js';
 import redis from '../../config/redis.js';
 import logger from '../../config/logger.js';
 import { getAllTickers } from '../../utils/ticker-cache.js';
+import { CircuitBreaker } from '@quantis/shared';
 
 const router = Router();
 
-// GET /funding-rates — Simulated funding rates based on RSI momentum
+// ── Circuit Breakers ────────────────────────────────────────────────
+const binanceFuturesBreaker = new CircuitBreaker('binance-futures', {
+  failureThreshold: 3,
+  resetTimeout: 60_000,
+  onStateChange: (name, from, to) => {
+    logger.warn(`Circuit breaker "${name}" transitioned ${from} → ${to}`);
+  },
+});
+
+const bybitBreaker = new CircuitBreaker('bybit-derivatives', {
+  failureThreshold: 3,
+  resetTimeout: 60_000,
+  onStateChange: (name, from, to) => {
+    logger.warn(`Circuit breaker "${name}" transitioned ${from} → ${to}`);
+  },
+});
+
+// ── Types ───────────────────────────────────────────────────────────
+interface BinancePremiumIndex {
+  symbol: string;
+  markPrice: string;
+  indexPrice: string;
+  lastFundingRate: string;
+  nextFundingTime: number;
+  interestRate: string;
+  time: number;
+}
+
+interface BinanceOpenInterest {
+  symbol: string;
+  openInterest: string;
+  time: number;
+}
+
+interface BybitTickerItem {
+  symbol: string;
+  lastPrice: string;
+  fundingRate: string;
+  nextFundingTime: string;
+  openInterest: string;
+  openInterestValue: string;
+  turnover24h: string;
+  volume24h: string;
+  price24hPcnt: string;
+}
+
+interface BybitTickerResponse {
+  retCode: number;
+  result: {
+    category: string;
+    list: BybitTickerItem[];
+  };
+}
+
+interface BybitOIItem {
+  openInterest: string;
+  timestamp: string;
+}
+
+interface BybitOIResponse {
+  retCode: number;
+  result: {
+    symbol: string;
+    category: string;
+    list: BybitOIItem[];
+  };
+}
+
+// ── Constants ───────────────────────────────────────────────────────
+const BINANCE_FUTURES_BASE = 'https://fapi.binance.com/fapi/v1';
+const BYBIT_BASE = 'https://api.bybit.com/v5/market';
+
+const FUNDING_CACHE_TTL = 300;  // 5 minutes
+const OI_CACHE_TTL = 120;       // 2 minutes
+
+// Symbols we fetch from futures exchanges (superset of common perps)
+const FUTURES_SYMBOLS = [
+  'BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT',
+  'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'DOTUSDT', 'LINKUSDT',
+];
+
+// ── Utility: fetch with timeout ─────────────────────────────────────
+type FetchResponse = Awaited<ReturnType<typeof fetch>>;
+
+async function fetchWithTimeout(url: string, timeoutMs = 8000): Promise<FetchResponse> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const resp = await fetch(url, { signal: controller.signal });
+    return resp;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ── Fetch Funding Rates ─────────────────────────────────────────────
+
+interface FundingRateData {
+  symbol: string;
+  exchange: string;
+  rate: number;          // e.g. 0.01 means 0.01%
+  nextFundingTime: number; // unix ms
+}
+
+async function fetchBinanceFundingRates(): Promise<FundingRateData[]> {
+  return binanceFuturesBreaker.call(
+    async () => {
+      const resp = await fetchWithTimeout(`${BINANCE_FUTURES_BASE}/premiumIndex`);
+      if (!resp.ok) throw new Error(`Binance premiumIndex ${resp.status}`);
+      const data = (await resp.json()) as unknown as BinancePremiumIndex[];
+
+      const symbolSet = new Set(FUTURES_SYMBOLS);
+      return data
+        .filter((item) => symbolSet.has(item.symbol))
+        .map((item) => ({
+          symbol: item.symbol,
+          exchange: 'binance',
+          rate: parseFloat(item.lastFundingRate) * 100, // Convert to percentage
+          nextFundingTime: item.nextFundingTime,
+        }));
+    },
+    () => {
+      logger.warn('Binance funding rates circuit breaker fallback');
+      return [] as FundingRateData[];
+    },
+  );
+}
+
+async function fetchBybitFundingRates(): Promise<FundingRateData[]> {
+  return bybitBreaker.call(
+    async () => {
+      const resp = await fetchWithTimeout(`${BYBIT_BASE}/tickers?category=linear`);
+      if (!resp.ok) throw new Error(`Bybit tickers ${resp.status}`);
+      const data = (await resp.json()) as unknown as BybitTickerResponse;
+
+      if (data.retCode !== 0) throw new Error(`Bybit retCode ${data.retCode}`);
+
+      const symbolSet = new Set(FUTURES_SYMBOLS);
+      return data.result.list
+        .filter((item) => symbolSet.has(item.symbol))
+        .map((item) => ({
+          symbol: item.symbol,
+          exchange: 'bybit',
+          rate: parseFloat(item.fundingRate) * 100, // Convert to percentage
+          nextFundingTime: parseInt(item.nextFundingTime, 10),
+        }));
+    },
+    () => {
+      logger.warn('Bybit funding rates circuit breaker fallback');
+      return [] as FundingRateData[];
+    },
+  );
+}
+
+// ── Fetch Open Interest ─────────────────────────────────────────────
+
+interface OIData {
+  symbol: string;
+  exchange: string;
+  openInterestContracts: number; // OI in base asset (contracts)
+  openInterestUsd: number;       // OI in USD
+}
+
+async function fetchBinanceOpenInterest(
+  tickerMap: Record<string, { price: number }>,
+): Promise<OIData[]> {
+  return binanceFuturesBreaker.call(
+    async () => {
+      // Binance doesn't have a bulk OI endpoint, fetch per-symbol in parallel
+      const results = await Promise.allSettled(
+        FUTURES_SYMBOLS.map(async (symbol) => {
+          const resp = await fetchWithTimeout(
+            `${BINANCE_FUTURES_BASE}/openInterest?symbol=${symbol}`,
+          );
+          if (!resp.ok) throw new Error(`Binance OI ${symbol} ${resp.status}`);
+          const data = (await resp.json()) as unknown as BinanceOpenInterest;
+          const contracts = parseFloat(data.openInterest);
+          const price = tickerMap[symbol]?.price ?? 0;
+          return {
+            symbol,
+            exchange: 'binance' as const,
+            openInterestContracts: contracts,
+            openInterestUsd: contracts * price,
+          };
+        }),
+      );
+
+      const fulfilled: OIData[] = [];
+      for (const r of results) {
+        if (r.status === 'fulfilled') fulfilled.push(r.value);
+      }
+      return fulfilled;
+    },
+    () => {
+      logger.warn('Binance open interest circuit breaker fallback');
+      return [] as OIData[];
+    },
+  );
+}
+
+async function fetchBybitOpenInterest(
+  tickerMap: Record<string, { price: number }>,
+): Promise<OIData[]> {
+  return bybitBreaker.call(
+    async () => {
+      // Bybit linear tickers already include OI, but we can also use the dedicated endpoint
+      const resp = await fetchWithTimeout(`${BYBIT_BASE}/tickers?category=linear`);
+      if (!resp.ok) throw new Error(`Bybit tickers (OI) ${resp.status}`);
+      const data = (await resp.json()) as unknown as BybitTickerResponse;
+      if (data.retCode !== 0) throw new Error(`Bybit retCode ${data.retCode}`);
+
+      const symbolSet = new Set(FUTURES_SYMBOLS);
+      return data.result.list
+        .filter((item) => symbolSet.has(item.symbol))
+        .map((item) => {
+          const contracts = parseFloat(item.openInterest);
+          const price = tickerMap[item.symbol]?.price ?? parseFloat(item.lastPrice);
+          return {
+            symbol: item.symbol,
+            exchange: 'bybit',
+            openInterestContracts: contracts,
+            openInterestUsd: contracts * price,
+          };
+        });
+    },
+    () => {
+      logger.warn('Bybit open interest circuit breaker fallback');
+      return [] as OIData[];
+    },
+  );
+}
+
+// ── Mock Fallback Data (used when all real APIs fail) ───────────────
+
+function generateMockFundingRates(): Array<{
+  symbol: string;
+  exchange: string;
+  rate: number;
+  annualized: number;
+  nextFunding: string;
+  prediction: 'up' | 'down' | 'stable';
+}> {
+  const now = new Date();
+  const hours = now.getUTCHours();
+  const nextHour = hours < 8 ? 8 : hours < 16 ? 16 : 24;
+  const nextFundingDate = new Date(now);
+  nextFundingDate.setUTCHours(nextHour % 24, 0, 0, 0);
+  if (nextHour === 24) nextFundingDate.setUTCDate(nextFundingDate.getUTCDate() + 1);
+
+  return FUTURES_SYMBOLS.map((symbol) => {
+    // Seeded pseudo-random for stable mock values
+    let h = 0;
+    for (let i = 0; i < symbol.length; i++) {
+      h = ((h << 5) - h + symbol.charCodeAt(i)) | 0;
+    }
+    const rate = ((Math.abs(h) % 200) - 100) / 10000; // -0.01 to +0.01
+    const annualized = Math.round(rate * 3 * 365 * 100) / 100;
+    return {
+      symbol,
+      exchange: 'binance',
+      rate: Math.round(rate * 10000) / 10000,
+      annualized,
+      nextFunding: nextFundingDate.toISOString(),
+      prediction: rate > 0.005 ? 'up' as const : rate < -0.005 ? 'down' as const : 'stable' as const,
+    };
+  });
+}
+
+function generateMockOpenInterest(): Array<{
+  symbol: string;
+  exchange: string;
+  openInterest: number;
+  oiChange24h: number;
+  oiChangePercent: number;
+  volume: number;
+  oiVolumeRatio: number;
+  priceChange24h: number;
+}> {
+  const baseOIs: Record<string, number> = {
+    BTCUSDT: 12_000_000_000,
+    ETHUSDT: 6_000_000_000,
+    SOLUSDT: 1_500_000_000,
+    BNBUSDT: 800_000_000,
+    XRPUSDT: 700_000_000,
+    DOGEUSDT: 500_000_000,
+    ADAUSDT: 400_000_000,
+    AVAXUSDT: 350_000_000,
+    DOTUSDT: 300_000_000,
+    LINKUSDT: 250_000_000,
+  };
+
+  return FUTURES_SYMBOLS.map((symbol) => {
+    const oi = baseOIs[symbol] ?? 100_000_000;
+    return {
+      symbol,
+      exchange: 'binance',
+      openInterest: oi,
+      oiChange24h: Math.round(oi * 0.02),
+      oiChangePercent: 2.0,
+      volume: Math.round(oi * 0.3),
+      oiVolumeRatio: 3.33,
+      priceChange24h: 0,
+    };
+  });
+}
+
+// ── GET /funding-rates ──────────────────────────────────────────────
 router.get('/funding-rates', async (_req: Request, res: Response) => {
   try {
     // Check cache (5 min)
@@ -16,27 +323,43 @@ router.get('/funding-rates', async (_req: Request, res: Response) => {
       return;
     }
 
-    // Get active pairs
-    const pairsResult = await query(
-      `SELECT tp.id, tp.symbol, e.name as exchange
-       FROM trading_pairs tp
-       JOIN exchanges e ON e.id = tp.exchange_id
-       WHERE tp.is_active = true
-       ORDER BY tp.symbol ASC`
-    );
+    // Fetch from both exchanges in parallel
+    const [binanceRates, bybitRates] = await Promise.all([
+      fetchBinanceFundingRates(),
+      fetchBybitFundingRates(),
+    ]);
 
-    // Fetch tickers from shared cache
-    const allTickers = await getAllTickers();
-    const tickerMap: Record<string, { price: number; change24h: number; volume: number; timestamp?: number }> = {};
-    for (const [key, entry] of allTickers) {
-      tickerMap[key] = {
-        price: entry.price,
-        change24h: entry.change24h,
-        volume: entry.volume,
-        timestamp: entry.timestamp,
-      };
+    const hasRealData = binanceRates.length > 0 || bybitRates.length > 0;
+
+    if (!hasRealData) {
+      // Both APIs failed — serve mock data
+      logger.warn('All funding rate APIs failed, serving mock data');
+      const mockRates = generateMockFundingRates();
+      const response = { success: true, data: mockRates, _mock: true };
+      await redis.set('market:funding-rates', JSON.stringify(response), 'EX', 60); // shorter TTL for mock
+      res.json(response);
+      return;
     }
 
+    // Merge: prefer Binance when both have data; include Bybit-only symbols separately
+    const mergedMap = new Map<string, FundingRateData[]>();
+    for (const rate of [...binanceRates, ...bybitRates]) {
+      const existing = mergedMap.get(rate.symbol) || [];
+      existing.push(rate);
+      mergedMap.set(rate.symbol, existing);
+    }
+
+    // Also fetch tickers for price context
+    const allTickers = await getAllTickers();
+    const tickerMap: Record<string, { price: number; change24h: number }> = {};
+    for (const [key, entry] of allTickers) {
+      const symbol = key.split(':')[1];
+      if (symbol && !tickerMap[symbol]) {
+        tickerMap[symbol] = { price: entry.price, change24h: entry.change24h };
+      }
+    }
+
+    // Build response in the format the frontend expects
     const rates: Array<{
       symbol: string;
       exchange: string;
@@ -46,73 +369,33 @@ router.get('/funding-rates', async (_req: Request, res: Response) => {
       prediction: 'up' | 'down' | 'stable';
     }> = [];
 
-    for (const pair of pairsResult.rows) {
-      const tickerKey = `${pair.exchange}:${pair.symbol.toUpperCase()}`;
-      const ticker = tickerMap[tickerKey];
-      if (!ticker) continue;
+    for (const [symbol, exchangeRates] of mergedMap) {
+      for (const er of exchangeRates) {
+        // Annualized: 3 funding periods per day * 365
+        const annualized = Math.round(er.rate * 3 * 365 * 100) / 100;
 
-      // Compute RSI(14)
-      const candlesResult = await query(
-        `SELECT close FROM ohlcv_1m
-         WHERE pair_id = $1
-         ORDER BY time DESC
-         LIMIT 15`,
-        [pair.id]
-      );
+        // Prediction based on rate magnitude and direction
+        const prediction: 'up' | 'down' | 'stable' =
+          er.rate > 0.015 ? 'up' :
+          er.rate < -0.015 ? 'down' :
+          'stable';
 
-      const closes = candlesResult.rows.map((r: { close: string }) => parseFloat(r.close)).reverse();
-      let rsi = 50;
-      if (closes.length >= 15) {
-        let gains = 0;
-        let losses = 0;
-        for (let i = 1; i <= 14; i++) {
-          const diff = closes[i] - closes[i - 1];
-          if (diff > 0) gains += diff;
-          else losses += Math.abs(diff);
-        }
-        const avgGain = gains / 14;
-        const avgLoss = losses / 14;
-        rsi = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+        rates.push({
+          symbol,
+          exchange: er.exchange,
+          rate: Math.round(er.rate * 10000) / 10000,
+          annualized,
+          nextFunding: new Date(er.nextFundingTime).toISOString(),
+          prediction,
+        });
       }
-
-      // Compute funding rate from RSI
-      const rsiDistance = rsi - 50;
-      let rate = (rsiDistance / 50) * 0.1; // max +/-0.1%
-      rate = Math.max(-0.1, Math.min(0.1, rate));
-      rate = Math.round(rate * 10000) / 10000;
-
-      // Annualized: 3 funding periods per day * 365
-      const annualized = Math.round(rate * 3 * 365 * 100) / 100;
-
-      // Next funding: next 8-hour mark
-      const now = new Date();
-      const hours = now.getUTCHours();
-      const nextHour = hours < 8 ? 8 : hours < 16 ? 16 : 24;
-      const nextFundingDate = new Date(now);
-      nextFundingDate.setUTCHours(nextHour % 24, 0, 0, 0);
-      if (nextHour === 24) nextFundingDate.setUTCDate(nextFundingDate.getUTCDate() + 1);
-
-      // Prediction based on momentum
-      const prediction: 'up' | 'down' | 'stable' =
-        rsi > 60 ? 'up' :
-        rsi < 40 ? 'down' :
-        'stable';
-
-      rates.push({
-        symbol: pair.symbol,
-        exchange: pair.exchange,
-        rate,
-        annualized,
-        nextFunding: nextFundingDate.toISOString(),
-        prediction,
-      });
     }
 
     // Sort by absolute rate descending
     rates.sort((a, b) => Math.abs(b.rate) - Math.abs(a.rate));
 
     const response = { success: true, data: rates };
-    await redis.set('market:funding-rates', JSON.stringify(response), 'EX', 300);
+    await redis.set('market:funding-rates', JSON.stringify(response), 'EX', FUNDING_CACHE_TTL);
 
     res.json(response);
   } catch (err) {
@@ -121,36 +404,76 @@ router.get('/funding-rates', async (_req: Request, res: Response) => {
   }
 });
 
-// GET /open-interest — Simulated OI data
+// ── GET /open-interest ──────────────────────────────────────────────
 router.get('/open-interest', async (_req: Request, res: Response) => {
   try {
-    // Check cache (5 min)
+    // Check cache (2 min)
     const cached = await redis.get('market:open-interest');
     if (cached) {
       res.json(JSON.parse(cached));
       return;
     }
 
-    // Get active pairs
-    const pairsResult = await query(
-      `SELECT tp.id, tp.symbol, e.name as exchange
-       FROM trading_pairs tp
-       JOIN exchanges e ON e.id = tp.exchange_id
-       WHERE tp.is_active = true
-       ORDER BY tp.symbol ASC`
-    );
-
-    // Fetch tickers from shared cache
-    const allTickersOI = await getAllTickers();
+    // Fetch tickers for price data and 24h change
+    const allTickers = await getAllTickers();
     const tickerMap: Record<string, { price: number; change24h: number; volume: number }> = {};
-    for (const [key, entry] of allTickersOI) {
-      tickerMap[key] = {
-        price: entry.price,
-        change24h: entry.change24h,
-        volume: entry.volume,
-      };
+    for (const [key, entry] of allTickers) {
+      const symbol = key.split(':')[1];
+      if (symbol && !tickerMap[symbol]) {
+        tickerMap[symbol] = {
+          price: entry.price,
+          change24h: entry.change24h,
+          volume: entry.volume,
+        };
+      }
     }
 
+    // Fetch OI from both exchanges in parallel
+    const [binanceOI, bybitOI] = await Promise.all([
+      fetchBinanceOpenInterest(tickerMap),
+      fetchBybitOpenInterest(tickerMap),
+    ]);
+
+    const hasRealData = binanceOI.length > 0 || bybitOI.length > 0;
+
+    if (!hasRealData) {
+      logger.warn('All open interest APIs failed, serving mock data');
+      const mockOI = generateMockOpenInterest();
+      const response = { success: true, data: mockOI, _mock: true };
+      await redis.set('market:open-interest', JSON.stringify(response), 'EX', 60);
+      res.json(response);
+      return;
+    }
+
+    // Try to load previous OI snapshot for 24h change calculation
+    const prevSnapshotRaw = await redis.get('market:open-interest:prev-snapshot');
+    const prevSnapshot: Record<string, number> = prevSnapshotRaw
+      ? JSON.parse(prevSnapshotRaw)
+      : {};
+
+    // Aggregate OI per symbol across exchanges
+    const oiBySymbol = new Map<string, { totalContracts: number; totalUsd: number; exchanges: string[] }>();
+    for (const oi of [...binanceOI, ...bybitOI]) {
+      const existing = oiBySymbol.get(oi.symbol) || { totalContracts: 0, totalUsd: 0, exchanges: [] };
+      existing.totalContracts += oi.openInterestContracts;
+      existing.totalUsd += oi.openInterestUsd;
+      existing.exchanges.push(oi.exchange);
+      oiBySymbol.set(oi.symbol, existing);
+    }
+
+    // Save current snapshot for future 24h change calculation (24h TTL)
+    const currentSnapshot: Record<string, number> = {};
+    for (const [symbol, data] of oiBySymbol) {
+      currentSnapshot[symbol] = data.totalUsd;
+    }
+    await redis.set(
+      'market:open-interest:prev-snapshot',
+      JSON.stringify(currentSnapshot),
+      'EX',
+      86400,
+    );
+
+    // Build response
     const oiData: Array<{
       symbol: string;
       exchange: string;
@@ -162,45 +485,30 @@ router.get('/open-interest', async (_req: Request, res: Response) => {
       priceChange24h: number;
     }> = [];
 
-    // Use a seeded pseudo-random based on symbol to keep values stable within cache window
-    function pseudoRandom(seed: string): number {
-      let h = 0;
-      for (let i = 0; i < seed.length; i++) {
-        h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
-      }
-      return (Math.abs(h) % 1000) / 1000;
-    }
+    for (const [symbol, data] of oiBySymbol) {
+      const ticker = tickerMap[symbol];
+      const volumeNotional = ticker ? ticker.volume * ticker.price : 0;
 
-    for (const pair of pairsResult.rows) {
-      const tickerKey = `${pair.exchange}:${pair.symbol.toUpperCase()}`;
-      const ticker = tickerMap[tickerKey];
-      if (!ticker || ticker.volume === 0) continue;
+      // Calculate 24h change from previous snapshot
+      const prevOi = prevSnapshot[symbol] ?? 0;
+      const oiChange24h = prevOi > 0 ? Math.round(data.totalUsd - prevOi) : 0;
+      const oiChangePercent = prevOi > 0
+        ? Math.round(((data.totalUsd - prevOi) / prevOi) * 10000) / 100
+        : 0;
 
-      // OI = recent avg volume * price * random(5, 20)
-      const rand = pseudoRandom(pair.symbol + new Date().toISOString().slice(0, 13));
-      const multiplier = 5 + rand * 15; // 5 to 20
-      const openInterest = ticker.volume * ticker.price * multiplier;
-
-      // OI change proportional to price change, with some variance
-      const randVariance = pseudoRandom(pair.symbol + 'var') * 2 - 0.5;
-      const oiChangePercent = ticker.change24h * (0.5 + randVariance);
-      const oiChange24h = openInterest * (oiChangePercent / 100);
-
-      // OI/Volume ratio
-      const volumeNotional = ticker.volume * ticker.price;
       const oiVolumeRatio = volumeNotional > 0
-        ? Math.round((openInterest / volumeNotional) * 100) / 100
+        ? Math.round((data.totalUsd / volumeNotional) * 100) / 100
         : 0;
 
       oiData.push({
-        symbol: pair.symbol,
-        exchange: pair.exchange,
-        openInterest: Math.round(openInterest),
-        oiChange24h: Math.round(oiChange24h),
-        oiChangePercent: Math.round(oiChangePercent * 100) / 100,
+        symbol,
+        exchange: data.exchanges.join('+'), // e.g. "binance+bybit"
+        openInterest: Math.round(data.totalUsd),
+        oiChange24h,
+        oiChangePercent,
         volume: Math.round(volumeNotional),
         oiVolumeRatio,
-        priceChange24h: ticker.change24h,
+        priceChange24h: ticker?.change24h ?? 0,
       });
     }
 
@@ -208,7 +516,7 @@ router.get('/open-interest', async (_req: Request, res: Response) => {
     oiData.sort((a, b) => b.openInterest - a.openInterest);
 
     const response = { success: true, data: oiData };
-    await redis.set('market:open-interest', JSON.stringify(response), 'EX', 300);
+    await redis.set('market:open-interest', JSON.stringify(response), 'EX', OI_CACHE_TTL);
 
     res.json(response);
   } catch (err) {
@@ -391,7 +699,7 @@ router.get('/orderflow/:symbol', async (req: Request, res: Response) => {
     let cumDelta = 0;
     const cumulativeDelta: number[] = [];
 
-    const footprintCandles = candles.map((c, ci) => {
+    const footprintCandles = candles.map((c: { time: string; open: number; high: number; low: number; close: number; volume: number }, ci: number) => {
       const range = c.high - c.low;
       const levels: Array<{ price: number; buyVol: number; sellVol: number; delta: number }> = [];
 
