@@ -7,8 +7,12 @@
  *   import { env } from './config/env.js';
  */
 
+import path from 'path';
 import dotenv from 'dotenv';
-dotenv.config();
+
+// Load .env from project root (handles both workspace and direct execution)
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+dotenv.config({ path: path.resolve(process.cwd(), '../../.env') });
 
 // ---------------------------------------------------------------------------
 // Helpers

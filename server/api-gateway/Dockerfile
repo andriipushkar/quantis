@@ -1,13 +1,15 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json* ./
+COPY tsconfig.base.json ./
 COPY server/api-gateway/package.json server/api-gateway/
 COPY shared/package.json shared/
 RUN npm install -w server/api-gateway -w shared
 COPY shared/ shared/
+RUN npm -w shared run build
 COPY server/api-gateway/ server/api-gateway/
 WORKDIR /app/server/api-gateway
-RUN npx tsc
+RUN npx tsc --skipLibCheck
 
 FROM node:20-alpine
 WORKDIR /app

@@ -3,6 +3,7 @@ FROM node:20-alpine
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
+COPY tsconfig.base.json ./
 COPY server/analysis-engine/package.json server/analysis-engine/
 COPY shared/package.json shared/
 
