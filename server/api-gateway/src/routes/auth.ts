@@ -235,7 +235,9 @@ router.get('/me', authenticate, async (req: AuthenticatedRequest, res: Response)
       return;
     }
 
-    res.json({ success: true, data: result.rows[0] });
+    const userData = result.rows[0];
+    const isAdmin = env.ADMIN_EMAILS.includes(userData.email.toLowerCase());
+    res.json({ success: true, data: { ...userData, is_admin: isAdmin } });
   } catch (err) {
     logger.error('Get profile error', { error: (err as Error).message });
     res.status(500).json({ success: false, error: 'Internal server error' });

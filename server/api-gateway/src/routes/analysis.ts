@@ -3,6 +3,12 @@ import { query } from '../config/database.js';
 import redis from '../config/redis.js';
 import logger from '../config/logger.js';
 
+// Whitelist of valid timeframe table names to prevent SQL injection
+const SAFE_TABLES: Record<string, string> = {
+  '1m': 'ohlcv_1m', '5m': 'ohlcv_5m', '15m': 'ohlcv_15m',
+  '1h': 'ohlcv_1h', '4h': 'ohlcv_4h', '1d': 'ohlcv_1d',
+};
+
 const router = Router();
 
 // GET /indicators/:symbol — calculate indicators on the fly from OHLCV data
@@ -10,7 +16,11 @@ router.get('/indicators/:symbol', async (req: Request, res: Response) => {
   try {
     const { timeframe = '1m', period = '14' } = req.query;
     const symbol = req.params.symbol.toUpperCase();
-    const table = `ohlcv_${timeframe}`;
+    const table = SAFE_TABLES[timeframe as string];
+    if (!table) {
+      res.status(400).json({ success: false, error: 'Invalid timeframe', validTimeframes: Object.keys(SAFE_TABLES) });
+      return;
+    }
     const p = parseInt(period as string, 10) || 14;
 
     // Fetch enough candles for calculations
@@ -124,7 +134,11 @@ router.get('/patterns/:symbol', async (req: Request, res: Response) => {
   try {
     const symbol = req.params.symbol.toUpperCase();
     const { timeframe = '1h' } = req.query;
-    const table = `ohlcv_${timeframe}`;
+    const table = SAFE_TABLES[timeframe as string];
+    if (!table) {
+      res.status(400).json({ success: false, error: 'Invalid timeframe', validTimeframes: Object.keys(SAFE_TABLES) });
+      return;
+    }
 
     // Fetch pair
     const pairResult = await query(
@@ -352,7 +366,11 @@ router.get('/elliott/:symbol', async (req: Request, res: Response) => {
   try {
     const symbol = req.params.symbol.toUpperCase();
     const { timeframe = '1h' } = req.query;
-    const table = `ohlcv_${timeframe}`;
+    const table = SAFE_TABLES[timeframe as string];
+    if (!table) {
+      res.status(400).json({ success: false, error: 'Invalid timeframe', validTimeframes: Object.keys(SAFE_TABLES) });
+      return;
+    }
 
     // Check cache (5 min)
     const cacheKey = `analysis:elliott:${symbol}:${timeframe}`;
@@ -595,7 +613,11 @@ router.get('/harmonics/:symbol', async (req: Request, res: Response) => {
   try {
     const symbol = req.params.symbol.toUpperCase();
     const { timeframe = '1h' } = req.query;
-    const table = `ohlcv_${timeframe}`;
+    const table = SAFE_TABLES[timeframe as string];
+    if (!table) {
+      res.status(400).json({ success: false, error: 'Invalid timeframe', validTimeframes: Object.keys(SAFE_TABLES) });
+      return;
+    }
 
     // Check cache (5 min)
     const cacheKey = `analysis:harmonics:${symbol}:${timeframe}`;

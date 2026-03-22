@@ -1,54 +1,38 @@
 import { Router, Response } from 'express';
 import redis from '../config/redis.js';
 import logger from '../config/logger.js';
+import { query } from '../config/database.js';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
 import { validateBody, orderSchema } from '../validators/index.js';
 
 const router = Router();
 
-// --- In-memory paper trading store ---
+// --- Helpers ---
 
-interface Position {
-  symbol: string;
-  side: 'buy' | 'sell';
-  entryPrice: number;
-  quantity: number; // quantity of asset
-  amount: number; // USD amount invested
-  openedAt: string;
+/** Map API side ('buy'/'sell') to DB side ('long'/'short') */
+function toDbSide(side: string): string {
+  return side === 'buy' ? 'long' : 'short';
 }
 
-interface TradeRecord {
-  symbol: string;
-  side: 'buy' | 'sell';
-  entryPrice: number;
-  exitPrice: number;
-  quantity: number;
-  amount: number;
-  pnl: number;
-  closedAt: string;
-  openedAt: string;
+/** Map DB side ('long'/'short') to API side ('buy'/'sell') */
+function toApiSide(side: string): string {
+  return side === 'long' ? 'buy' : 'sell';
 }
 
-interface PaperAccount {
-  balance: number;
-  positions: Position[];
-  history: TradeRecord[];
-}
-
-const accounts = new Map<string, PaperAccount>();
-
-function getAccount(userId: string): PaperAccount {
-  if (!accounts.has(userId)) {
-    accounts.set(userId, {
-      balance: 10000,
-      positions: [],
-      history: [],
-    });
+/** Ensure a paper account row exists, return the account */
+async function getOrCreateAccount(userId: string) {
+  const existing = await query('SELECT * FROM paper_accounts WHERE user_id = $1', [userId]);
+  if (existing.rows.length > 0) {
+    return existing.rows[0];
   }
-  return accounts.get(userId)!;
+  const inserted = await query(
+    'INSERT INTO paper_accounts (user_id, balance, equity, realized_pnl) VALUES ($1, 10000, 10000, 0) RETURNING *',
+    [userId],
+  );
+  return inserted.rows[0];
 }
 
-// Fetch ticker from Redis
+/** Fetch ticker from Redis */
 async function getTickerPrice(symbol: string): Promise<number | null> {
   const exchanges = ['binance', 'bybit', 'okx'];
   for (const exchange of exchanges) {
@@ -57,7 +41,9 @@ async function getTickerPrice(symbol: string): Promise<number | null> {
       try {
         const parsed = JSON.parse(data);
         return parsed.price ?? null;
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
     }
   }
   return null;
@@ -66,32 +52,35 @@ async function getTickerPrice(symbol: string): Promise<number | null> {
 // GET /account — Returns virtual account summary
 router.get('/account', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const account = getAccount(req.user!.id);
+    const userId = req.user!.id;
+    const account = await getOrCreateAccount(userId);
 
     // Calculate unrealized P&L from open positions
+    const positionsResult = await query('SELECT * FROM paper_positions WHERE user_id = $1', [userId]);
     let unrealizedPnl = 0;
-    for (const pos of account.positions) {
+    for (const pos of positionsResult.rows) {
       const currentPrice = await getTickerPrice(pos.symbol);
       if (currentPrice !== null) {
-        if (pos.side === 'buy') {
-          unrealizedPnl += (currentPrice - pos.entryPrice) * pos.quantity;
+        if (pos.side === 'long') {
+          unrealizedPnl += (currentPrice - Number(pos.entry_price)) * Number(pos.quantity);
         } else {
-          unrealizedPnl += (pos.entryPrice - currentPrice) * pos.quantity;
+          unrealizedPnl += (Number(pos.entry_price) - currentPrice) * Number(pos.quantity);
         }
       }
     }
 
-    const realizedPnl = account.history.reduce((sum, t) => sum + t.pnl, 0);
-    const equity = account.balance + unrealizedPnl;
+    const balance = Number(account.balance);
+    const realizedPnl = Number(account.realized_pnl);
+    const equity = balance + unrealizedPnl;
 
     res.json({
       success: true,
       data: {
-        balance: Math.round(account.balance * 100) / 100,
+        balance: Math.round(balance * 100) / 100,
         equity: Math.round(equity * 100) / 100,
         unrealizedPnl: Math.round(unrealizedPnl * 100) / 100,
         realizedPnl: Math.round(realizedPnl * 100) / 100,
-        positionsCount: account.positions.length,
+        positionsCount: positionsResult.rows.length,
       },
     });
   } catch (err) {
@@ -104,6 +93,7 @@ router.get('/account', authenticate, async (req: AuthenticatedRequest, res: Resp
 router.post('/order', authenticate, validateBody(orderSchema), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { symbol: rawSymbol, side, quantity: usdAmount } = req.body;
+    const userId = req.user!.id;
 
     const symbol = rawSymbol.toUpperCase();
     const currentPrice = await getTickerPrice(symbol);
@@ -112,58 +102,70 @@ router.post('/order', authenticate, validateBody(orderSchema), async (req: Authe
       return;
     }
 
-    const account = getAccount(req.user!.id);
+    const account = await getOrCreateAccount(userId);
+    const balance = Number(account.balance);
 
-    if (usdAmount > account.balance) {
+    if (usdAmount > balance) {
       res.status(400).json({ success: false, error: 'Insufficient balance' });
       return;
     }
 
     const assetQuantity = usdAmount / currentPrice;
+    const dbSide = toDbSide(side);
 
-    // Check if there's an existing position in the opposite direction to close
-    const existingIdx = account.positions.findIndex((p) => p.symbol === symbol);
-    if (existingIdx !== -1) {
-      const existing = account.positions[existingIdx];
-      if (existing.side !== side) {
-        // Close existing position
+    // Check if there's an existing position for this symbol
+    const existingResult = await query(
+      'SELECT * FROM paper_positions WHERE user_id = $1 AND symbol = $2',
+      [userId, symbol],
+    );
+
+    if (existingResult.rows.length > 0) {
+      const existing = existingResult.rows[0];
+      if (existing.side !== dbSide) {
+        // Close existing position (opposite direction)
+        const existingQty = Number(existing.quantity);
+        const existingEntryPrice = Number(existing.entry_price);
+        const existingAmount = existingEntryPrice * existingQty;
+
         let pnl: number;
-        if (existing.side === 'buy') {
-          pnl = (currentPrice - existing.entryPrice) * existing.quantity;
+        if (existing.side === 'long') {
+          pnl = (currentPrice - existingEntryPrice) * existingQty;
         } else {
-          pnl = (existing.entryPrice - currentPrice) * existing.quantity;
+          pnl = (existingEntryPrice - currentPrice) * existingQty;
         }
 
-        account.balance += existing.amount + pnl;
-        account.history.push({
-          symbol: existing.symbol,
-          side: existing.side,
-          entryPrice: existing.entryPrice,
-          exitPrice: currentPrice,
-          quantity: existing.quantity,
-          amount: existing.amount,
-          pnl: Math.round(pnl * 100) / 100,
-          openedAt: existing.openedAt,
-          closedAt: new Date().toISOString(),
-        });
-        account.positions.splice(existingIdx, 1);
+        const pnlRounded = Math.round(pnl * 100) / 100;
+        const pnlPercent = existingAmount > 0 ? (pnl / existingAmount) * 100 : 0;
 
-        // Now open the new position with the requested amount
-        account.balance -= usdAmount;
-        account.positions.push({
-          symbol,
-          side,
-          entryPrice: currentPrice,
-          quantity: assetQuantity,
-          amount: usdAmount,
-          openedAt: new Date().toISOString(),
-        });
+        // Insert into trade history
+        await query(
+          `INSERT INTO paper_trades (user_id, symbol, side, quantity, entry_price, exit_price, pnl, pnl_percent, opened_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [userId, symbol, existing.side, existingQty, existingEntryPrice, currentPrice, pnlRounded, Math.round(pnlPercent * 100) / 100, existing.opened_at],
+        );
+
+        // Delete old position
+        await query('DELETE FROM paper_positions WHERE id = $1', [existing.id]);
+
+        // Update balance: return old position value + pnl, then deduct new order
+        const newBalance = balance + existingAmount + pnl - usdAmount;
+        await query(
+          'UPDATE paper_accounts SET balance = $1, realized_pnl = realized_pnl + $2, updated_at = NOW() WHERE user_id = $3',
+          [newBalance, pnlRounded, userId],
+        );
+
+        // Open new position
+        await query(
+          `INSERT INTO paper_positions (user_id, symbol, side, quantity, entry_price, current_price, opened_at)
+           VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+          [userId, symbol, dbSide, assetQuantity, currentPrice, currentPrice],
+        );
 
         res.json({
           success: true,
           data: {
             action: 'closed_and_opened',
-            closedPnl: Math.round(pnl * 100) / 100,
+            closedPnl: pnlRounded,
             order: {
               symbol,
               side,
@@ -171,23 +173,25 @@ router.post('/order', authenticate, validateBody(orderSchema), async (req: Authe
               quantity: assetQuantity,
               amount: usdAmount,
             },
-            balance: Math.round(account.balance * 100) / 100,
+            balance: Math.round(newBalance * 100) / 100,
           },
         });
         return;
       }
     }
 
-    // Open new position or add to existing same-direction position
-    account.balance -= usdAmount;
-    account.positions.push({
-      symbol,
-      side,
-      entryPrice: currentPrice,
-      quantity: assetQuantity,
-      amount: usdAmount,
-      openedAt: new Date().toISOString(),
-    });
+    // Open new position (or add alongside existing same-direction)
+    const newBalance = balance - usdAmount;
+    await query(
+      'UPDATE paper_accounts SET balance = $1, updated_at = NOW() WHERE user_id = $2',
+      [newBalance, userId],
+    );
+
+    await query(
+      `INSERT INTO paper_positions (user_id, symbol, side, quantity, entry_price, current_price, opened_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+      [userId, symbol, dbSide, assetQuantity, currentPrice, currentPrice],
+    );
 
     res.json({
       success: true,
@@ -200,7 +204,7 @@ router.post('/order', authenticate, validateBody(orderSchema), async (req: Authe
           quantity: assetQuantity,
           amount: usdAmount,
         },
-        balance: Math.round(account.balance * 100) / 100,
+        balance: Math.round(newBalance * 100) / 100,
       },
     });
   } catch (err) {
@@ -212,32 +216,36 @@ router.post('/order', authenticate, validateBody(orderSchema), async (req: Authe
 // GET /positions — List open positions with current P&L
 router.get('/positions', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const account = getAccount(req.user!.id);
+    const userId = req.user!.id;
+    const positionsResult = await query('SELECT * FROM paper_positions WHERE user_id = $1', [userId]);
 
     const positions = [];
-    for (const pos of account.positions) {
+    for (const pos of positionsResult.rows) {
+      const entryPrice = Number(pos.entry_price);
+      const qty = Number(pos.quantity);
+      const amount = entryPrice * qty;
       const currentPrice = await getTickerPrice(pos.symbol);
       let pnl = 0;
       let pnlPct = 0;
       if (currentPrice !== null) {
-        if (pos.side === 'buy') {
-          pnl = (currentPrice - pos.entryPrice) * pos.quantity;
+        if (pos.side === 'long') {
+          pnl = (currentPrice - entryPrice) * qty;
         } else {
-          pnl = (pos.entryPrice - currentPrice) * pos.quantity;
+          pnl = (entryPrice - currentPrice) * qty;
         }
-        pnlPct = (pnl / pos.amount) * 100;
+        pnlPct = amount > 0 ? (pnl / amount) * 100 : 0;
       }
 
       positions.push({
         symbol: pos.symbol,
-        side: pos.side,
-        entryPrice: pos.entryPrice,
-        currentPrice: currentPrice ?? pos.entryPrice,
-        quantity: pos.quantity,
-        amount: pos.amount,
+        side: toApiSide(pos.side),
+        entryPrice,
+        currentPrice: currentPrice ?? entryPrice,
+        quantity: qty,
+        amount,
         pnl: Math.round(pnl * 100) / 100,
         pnlPct: Math.round(pnlPct * 100) / 100,
-        openedAt: pos.openedAt,
+        openedAt: pos.opened_at.toISOString(),
       });
     }
 
@@ -252,52 +260,67 @@ router.get('/positions', authenticate, async (req: AuthenticatedRequest, res: Re
 router.post('/close/:symbol', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const symbol = req.params.symbol.toUpperCase();
-    const account = getAccount(req.user!.id);
+    const userId = req.user!.id;
 
-    const posIdx = account.positions.findIndex((p) => p.symbol === symbol);
-    if (posIdx === -1) {
+    const posResult = await query(
+      'SELECT * FROM paper_positions WHERE user_id = $1 AND symbol = $2',
+      [userId, symbol],
+    );
+
+    if (posResult.rows.length === 0) {
       res.status(404).json({ success: false, error: `No open position for ${symbol}` });
       return;
     }
 
-    const pos = account.positions[posIdx];
+    const pos = posResult.rows[0];
     const currentPrice = await getTickerPrice(symbol);
     if (currentPrice === null) {
       res.status(404).json({ success: false, error: `No ticker data found for ${symbol}` });
       return;
     }
 
+    const entryPrice = Number(pos.entry_price);
+    const qty = Number(pos.quantity);
+    const amount = entryPrice * qty;
+
     let pnl: number;
-    if (pos.side === 'buy') {
-      pnl = (currentPrice - pos.entryPrice) * pos.quantity;
+    if (pos.side === 'long') {
+      pnl = (currentPrice - entryPrice) * qty;
     } else {
-      pnl = (pos.entryPrice - currentPrice) * pos.quantity;
+      pnl = (entryPrice - currentPrice) * qty;
     }
 
-    account.balance += pos.amount + pnl;
-    account.history.push({
-      symbol: pos.symbol,
-      side: pos.side,
-      entryPrice: pos.entryPrice,
-      exitPrice: currentPrice,
-      quantity: pos.quantity,
-      amount: pos.amount,
-      pnl: Math.round(pnl * 100) / 100,
-      openedAt: pos.openedAt,
-      closedAt: new Date().toISOString(),
-    });
-    account.positions.splice(posIdx, 1);
+    const pnlRounded = Math.round(pnl * 100) / 100;
+    const pnlPercent = amount > 0 ? Math.round(((pnl / amount) * 100) * 100) / 100 : 0;
+
+    // Insert trade history record
+    await query(
+      `INSERT INTO paper_trades (user_id, symbol, side, quantity, entry_price, exit_price, pnl, pnl_percent, opened_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [userId, symbol, pos.side, qty, entryPrice, currentPrice, pnlRounded, pnlPercent, pos.opened_at],
+    );
+
+    // Delete closed position
+    await query('DELETE FROM paper_positions WHERE id = $1', [pos.id]);
+
+    // Update account balance and realized PnL
+    const account = await getOrCreateAccount(userId);
+    const newBalance = Number(account.balance) + amount + pnl;
+    await query(
+      'UPDATE paper_accounts SET balance = $1, realized_pnl = realized_pnl + $2, updated_at = NOW() WHERE user_id = $3',
+      [newBalance, pnlRounded, userId],
+    );
 
     res.json({
       success: true,
       data: {
         symbol,
-        side: pos.side,
-        entryPrice: pos.entryPrice,
+        side: toApiSide(pos.side),
+        entryPrice,
         exitPrice: currentPrice,
-        quantity: pos.quantity,
-        pnl: Math.round(pnl * 100) / 100,
-        balance: Math.round(account.balance * 100) / 100,
+        quantity: qty,
+        pnl: pnlRounded,
+        balance: Math.round(newBalance * 100) / 100,
       },
     });
   } catch (err) {
@@ -309,8 +332,25 @@ router.post('/close/:symbol', authenticate, async (req: AuthenticatedRequest, re
 // GET /history — Trade history
 router.get('/history', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const account = getAccount(req.user!.id);
-    res.json({ success: true, data: account.history.slice().reverse() });
+    const userId = req.user!.id;
+    const result = await query(
+      'SELECT * FROM paper_trades WHERE user_id = $1 ORDER BY closed_at DESC',
+      [userId],
+    );
+
+    const history = result.rows.map((t) => ({
+      symbol: t.symbol,
+      side: toApiSide(t.side),
+      entryPrice: Number(t.entry_price),
+      exitPrice: Number(t.exit_price),
+      quantity: Number(t.quantity),
+      amount: Number(t.entry_price) * Number(t.quantity),
+      pnl: Number(t.pnl),
+      openedAt: t.opened_at.toISOString(),
+      closedAt: t.closed_at.toISOString(),
+    }));
+
+    res.json({ success: true, data: history });
   } catch (err) {
     logger.error('Paper history error', { error: (err as Error).message });
     res.status(500).json({ success: false, error: 'Internal server error' });

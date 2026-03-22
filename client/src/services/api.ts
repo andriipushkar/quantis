@@ -143,6 +143,7 @@ export interface User {
   ui_mode: string;
   referral_code: string;
   created_at: string;
+  is_admin?: boolean;
 }
 
 export interface TickerData {

@@ -313,7 +313,7 @@ export class OkxCollector extends BaseCollector {
           close: normalized.close,
           volume: normalized.volume,
           trades: normalized.trades,
-        });
+        }, { symbol, timeframe: '1m' });
 
         this.logger.debug('Stored closed OKX candle', {
           symbol,

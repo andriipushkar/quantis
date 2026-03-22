@@ -24,7 +24,6 @@ import {
   Server,
 } from 'lucide-react';
 
-const ADMIN_EMAILS = ['admin@quantis.io', 'smdshrek@gmail.com'];
 const TIERS = ['starter', 'trader', 'pro', 'institutional'];
 
 const Admin: React.FC = () => {
@@ -36,7 +35,8 @@ const Admin: React.FC = () => {
   const [health, setHealth] = useState<SystemHealth | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const isAdmin = user && ADMIN_EMAILS.includes(user.email.toLowerCase());
+  // Admin check via server-side flag from GET /auth/me (no hardcoded emails in client)
+  const isAdmin = user?.is_admin === true;
 
   useEffect(() => {
     if (!isAdmin) return;

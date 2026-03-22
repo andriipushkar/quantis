@@ -39,6 +39,7 @@ import docsRoutes from './routes/docs.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import { applySocketRateLimiting, canSubscribe, releaseSubscriptions } from './middleware/socketRateLimiter.js';
 import { sanitizeResponse, validateContentType, preventParamPollution } from './middleware/security.js';
+import { csrfProtection } from './middleware/csrf.js';
 import Redis from 'ioredis';
 
 const app = express();
@@ -69,6 +70,7 @@ app.use(cors(corsOptions));
 app.use(compression());
 app.use(express.json());
 app.use(cookieParser());
+app.use(csrfProtection);
 app.use(rateLimiter);
 
 // Routes
@@ -161,9 +163,9 @@ const redisSub = new Redis({
   maxRetriesPerRequest: null,
 });
 
-redisSub.subscribe('ticker:update', 'signal:new', 'alert:push', 'confluence:update', (err) => {
+redisSub.subscribe('ticker:update', 'signal:new', 'alert:push', 'confluence:update', 'ohlcv:update', (err) => {
   if (err) logger.error('Redis subscribe error', { error: err.message });
-  else logger.info('Subscribed to Redis channels: ticker:update, signal:new, alert:push, confluence:update');
+  else logger.info('Subscribed to Redis channels: ticker:update, signal:new, alert:push, confluence:update, ohlcv:update');
 });
 
 redisSub.on('message', (channel, message) => {
@@ -182,6 +184,11 @@ redisSub.on('message', (channel, message) => {
       io.emit('confluence:update', data);
       if (data.symbol) {
         io.to(`ticker:${data.symbol}`).emit('confluence:update', data);
+      }
+    } else if (channel === 'ohlcv:update') {
+      // Send to clients subscribed to this symbol + timeframe room
+      if (data.symbol && data.timeframe) {
+        io.to(`ohlcv:${data.symbol}:${data.timeframe}`).emit('ohlcv:update', data);
       }
     } else if (channel === 'alert:push') {
       // Send to specific user

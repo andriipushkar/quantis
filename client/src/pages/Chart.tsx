@@ -4,7 +4,8 @@ import { cn } from '@/utils/cn';
 import { TradingChart, type TradingChartRef, type OHLCVData } from '@/components/charts/TradingChart';
 import { RSIChart } from '@/components/charts/RSIChart';
 import { useMarketStore, TIMEFRAMES } from '@/stores/market';
-import { getOHLCV, getTickers, getPairs, type TradingPair } from '@/services/api';
+import { getOHLCV, getPairs, type TradingPair } from '@/services/api';
+import { subscribeOHLCV, unsubscribeOHLCV, subscribeTicker, unsubscribeTicker, getSocket } from '@/services/socket';
 import { Activity, ChevronDown, BarChart3 } from 'lucide-react';
 import { DrawingToolbar } from '@/components/charts/DrawingToolbar';
 
@@ -45,7 +46,6 @@ const Chart: React.FC = () => {
     tickers,
     setSelectedPair,
     setSelectedTimeframe,
-    updateTickers,
   } = useMarketStore();
 
   const currentSymbol = symbol || selectedPair;
@@ -83,20 +83,39 @@ const Chart: React.FC = () => {
     fetchCandles();
   }, [fetchCandles]);
 
-  // Poll for new candles + indicators every 10s
+  // Subscribe to WebSocket for live OHLCV + ticker updates
   useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const data = await getOHLCV(currentSymbol, selectedTimeframe, 500);
-        setCandles(data);
-      } catch { /* ignore */ }
-      try {
-        const res = await fetch(`/api/v1/analysis/indicators/${currentSymbol}?timeframe=${selectedTimeframe}`);
-        const json = await res.json();
-        if (json.success) setIndicators(json.data.current);
-      } catch { /* ignore */ }
-    }, 10000);
-    return () => clearInterval(interval);
+    const socket = getSocket();
+
+    subscribeOHLCV(currentSymbol, selectedTimeframe);
+    subscribeTicker([currentSymbol]);
+
+    // Handle live candle updates — append or update the latest candle
+    const handleOHLCVUpdate = (data: OHLCVData & { symbol?: string; timeframe?: string }) => {
+      if (data.symbol && data.symbol !== currentSymbol) return;
+      if (data.timeframe && data.timeframe !== selectedTimeframe) return;
+
+      setCandles((prev) => {
+        if (prev.length === 0) return prev;
+        const last = prev[prev.length - 1];
+        if (data.time === last.time) {
+          // Update existing candle
+          return [...prev.slice(0, -1), { ...last, ...data }];
+        } else if (data.time > last.time) {
+          // Append new candle
+          return [...prev, data];
+        }
+        return prev;
+      });
+    };
+
+    socket.on('ohlcv:update', handleOHLCVUpdate);
+
+    return () => {
+      socket.off('ohlcv:update', handleOHLCVUpdate);
+      unsubscribeOHLCV(currentSymbol, selectedTimeframe);
+      unsubscribeTicker([currentSymbol]);
+    };
   }, [currentSymbol, selectedTimeframe]);
 
   // Fetch indicators on symbol/timeframe change
@@ -109,19 +128,6 @@ const Chart: React.FC = () => {
       } catch { /* ignore */ }
     })();
   }, [currentSymbol, selectedTimeframe]);
-
-  // Fetch tickers for header price display
-  useEffect(() => {
-    const fetchTickers = async () => {
-      try {
-        const data = await getTickers();
-        updateTickers(data);
-      } catch { /* ignore */ }
-    };
-    fetchTickers();
-    const interval = setInterval(fetchTickers, 5000);
-    return () => clearInterval(interval);
-  }, [updateTickers]);
 
   // Fetch pairs list for picker
   useEffect(() => {

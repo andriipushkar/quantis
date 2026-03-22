@@ -23,6 +23,7 @@ export abstract class BaseCollector {
    * Insert OHLCV candle data into the specified table.
    * Uses ON CONFLICT to upsert - updates if a row with the same
    * (time, pair_id, exchange_id) already exists.
+   * Also publishes ohlcv:update via Redis for real-time WebSocket delivery.
    */
   protected async storeOHLCV(
     table: string,
@@ -36,7 +37,8 @@ export abstract class BaseCollector {
       close: number;
       volume: number;
       trades: number;
-    }
+    },
+    meta?: { symbol: string; timeframe: string }
   ): Promise<void> {
     const sql = `
       INSERT INTO ${table} (time, pair_id, exchange_id, open, high, low, close, volume, trades)
@@ -62,6 +64,21 @@ export abstract class BaseCollector {
         data.volume,
         data.trades,
       ]);
+
+      // Publish real-time OHLCV update for WebSocket clients
+      if (meta?.symbol && meta?.timeframe) {
+        const payload = JSON.stringify({
+          symbol: meta.symbol,
+          timeframe: meta.timeframe,
+          time: Math.floor(data.time.getTime() / 1000),
+          open: data.open,
+          high: data.high,
+          low: data.low,
+          close: data.close,
+          volume: data.volume,
+        });
+        await this.redis.publish('ohlcv:update', payload).catch(() => {});
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Failed to store OHLCV data in ${table}`, { error: message });
