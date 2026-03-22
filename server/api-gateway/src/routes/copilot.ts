@@ -6,7 +6,7 @@ import logger from '../config/logger.js';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
 import { validateBody, copilotSchema } from '../validators/index.js';
 import { CircuitBreaker } from '@quantis/shared';
-import { getAllTickers } from '../utils/ticker-cache.js';
+import { getAllTickers, getTickerBySymbol } from '../utils/ticker-cache.js';
 
 const router = Router();
 
@@ -28,23 +28,11 @@ async function checkRateLimit(userId: string): Promise<boolean> {
   return count <= 10;
 }
 
-// Fetch ticker from Redis (try binance first, then others)
-async function getTickerFromRedis(symbol: string): Promise<{ price: number; change24h: number; volume: number } | null> {
-  const exchanges = ['binance', 'bybit', 'okx'];
-  for (const exchange of exchanges) {
-    const data = await redis.get(`ticker:${exchange}:${symbol}`);
-    if (data) {
-      try {
-        const parsed = JSON.parse(data);
-        return {
-          price: parsed.price ?? 0,
-          change24h: parsed.change24h ?? 0,
-          volume: parsed.volume ?? 0,
-        };
-      } catch { /* skip */ }
-    }
-  }
-  return null;
+// Fetch ticker via shared cache (O(1) hash lookup, no redis.keys)
+async function getTickerFromCache(symbol: string): Promise<{ price: number; change24h: number; volume: number } | null> {
+  const entry = await getTickerBySymbol(symbol);
+  if (!entry) return null;
+  return { price: entry.price ?? 0, change24h: entry.change24h ?? 0, volume: entry.volume ?? 0 };
 }
 
 // Compute RSI inline from closes
@@ -92,7 +80,7 @@ router.post('/ask', authenticate, validateBody(copilotSchema), async (req: Authe
     const symbol = (rawSymbol || 'BTCUSDT').toUpperCase();
 
     // Gather market context
-    const ticker = await getTickerFromRedis(symbol);
+    const ticker = await getTickerFromCache(symbol);
     const price = ticker?.price ?? 0;
     const change24h = ticker?.change24h ?? 0;
 

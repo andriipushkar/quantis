@@ -124,13 +124,12 @@ analysisQueue.process('analyze-pair', 5, async (job) => {
 
     const confluence = calculateConfluence(confluenceInput);
 
-    // Cache in Redis (60s TTL, refreshed every cycle)
-    await publisherClient.set(
-      `confluence:${pair.symbol}`,
-      JSON.stringify(confluence),
-      'EX',
-      120,
-    );
+    // Cache in Redis — individual key (120s TTL) + snapshot hash (O(1) reads)
+    const confluenceJson = JSON.stringify(confluence);
+    await Promise.all([
+      publisherClient.set(`confluence:${pair.symbol}`, confluenceJson, 'EX', 120),
+      publisherClient.hset('confluence:snapshot', pair.symbol, confluenceJson),
+    ]);
 
     // Publish for real-time WebSocket delivery
     await publisherClient.publish('confluence:update', JSON.stringify(confluence));

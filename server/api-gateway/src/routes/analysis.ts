@@ -1151,28 +1151,16 @@ router.get('/confluence/:symbol', async (req: Request, res: Response) => {
 // GET /confluence — all available confluence scores
 router.get('/confluence', async (_req: Request, res: Response) => {
   try {
-    // Scan Redis for all confluence keys
-    const keys = await redis.keys('confluence:*');
-    const confluenceKeys = keys.filter(
-      (k) => !k.includes(':feargreed') && !k.includes(':news:') && !k.includes(':whales:')
-    );
+    // Read all confluence scores from snapshot hash (O(1), no redis.keys)
+    const raw = await redis.hgetall('confluence:snapshot');
 
-    if (confluenceKeys.length === 0) {
+    if (!raw || Object.keys(raw).length === 0) {
       res.json({ success: true, data: [] });
       return;
     }
 
-    const pipeline = redis.pipeline();
-    for (const key of confluenceKeys) {
-      pipeline.get(key);
-    }
-    const results = await pipeline.exec();
-
-    const scores = (results || [])
-      .map((r) => {
-        if (!r || r[0] || typeof r[1] !== 'string') return null;
-        try { return JSON.parse(r[1]); } catch { return null; }
-      })
+    const scores = Object.values(raw)
+      .map((v) => { try { return JSON.parse(v); } catch { return null; } })
       .filter(Boolean)
       .sort((a: { score: number }, b: { score: number }) => b.score - a.score);
 
