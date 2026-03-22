@@ -2,17 +2,25 @@
  * Paper Trading routes — unit tests
  *
  * Tests the business logic inside /routes/paper-trading.ts by mocking
- * Redis (ticker prices), logger, and env. Paper trading uses an in-memory
- * store so no database mocking needed for core logic.
+ * the database query function, Redis (ticker prices), logger, and env.
+ * The route now uses PostgreSQL for persistence via query().
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // ---------------------------------------------------------------------------
-// Mocks
+// Mocks — must be declared BEFORE the module under test is imported
 // ---------------------------------------------------------------------------
 
+const mockQuery = jest.fn();
 const mockRedisGet = jest.fn();
+
+jest.mock('../config/database.js', () => ({
+  __esModule: true,
+  query: (...args: any[]) => mockQuery(...args),
+  default: {},
+}));
+
 jest.mock('../config/redis.js', () => ({
   __esModule: true,
   default: {
@@ -20,12 +28,6 @@ jest.mock('../config/redis.js', () => ({
     set: jest.fn(),
     del: jest.fn(),
   },
-}));
-
-jest.mock('../config/database.js', () => ({
-  __esModule: true,
-  query: jest.fn(),
-  default: {},
 }));
 
 jest.mock('../config/logger.js', () => ({
@@ -134,7 +136,6 @@ function authenticatedReq(
 
 /**
  * Helper to set up Redis to return a specific price for a symbol.
- * The paper-trading code iterates binance, bybit, okx; we return on binance.
  */
 function setTickerPrice(symbol: string, price: number) {
   mockRedisGet.mockImplementation((key: string) => {
@@ -159,12 +160,43 @@ function setTickerPrices(prices: Record<string, number>) {
   });
 }
 
-// Each test suite uses a unique user ID to get a fresh in-memory account.
-let userCounter = 0;
-function freshUser() {
-  userCounter++;
-  return { id: `paper-user-${userCounter}`, email: `paper${userCounter}@test.com`, tier: 'trader' };
+// ---------------------------------------------------------------------------
+// DB helper: build a mock paper account row
+// ---------------------------------------------------------------------------
+function makeAccount(userId: string, balance: number, realizedPnl = 0) {
+  return {
+    user_id: userId,
+    balance,
+    equity: balance,
+    realized_pnl: realizedPnl,
+  };
 }
+
+// ---------------------------------------------------------------------------
+// DB helper: build a mock paper position row
+// ---------------------------------------------------------------------------
+let posIdCounter = 0;
+function makePosition(
+  userId: string,
+  symbol: string,
+  side: 'long' | 'short',
+  quantity: number,
+  entryPrice: number,
+) {
+  posIdCounter++;
+  return {
+    id: `pos-${posIdCounter}`,
+    user_id: userId,
+    symbol,
+    side,
+    quantity,
+    entry_price: entryPrice,
+    current_price: entryPrice,
+    opened_at: new Date('2025-01-15T10:00:00Z'),
+  };
+}
+
+const TEST_USER = { id: 'paper-user-1', email: 'paper@test.com', tier: 'trader' };
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -172,6 +204,7 @@ function freshUser() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  posIdCounter = 0;
 });
 
 // =========================================================================
@@ -181,12 +214,15 @@ describe('GET /account', () => {
   const handlers = findHandler('get', '/account');
 
   test('new account starts with $10,000 balance', async () => {
-    const user = freshUser();
     mockRedisGet.mockResolvedValue(null);
+    // getOrCreateAccount: no existing row, then insert
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // SELECT paper_accounts
+      .mockResolvedValueOnce({ rows: [makeAccount(TEST_USER.id, 10000)] }) // INSERT
+      .mockResolvedValueOnce({ rows: [] }); // SELECT paper_positions
 
-    const req = authenticatedReq(user);
+    const req = authenticatedReq(TEST_USER);
     const res = mockRes();
-
     await runHandlers(handlers, req, res);
 
     expect(res.statusCode).toBe(200);
@@ -204,18 +240,19 @@ describe('GET /account', () => {
 // =========================================================================
 describe('POST /order — BUY', () => {
   const orderHandlers = findHandler('post', '/order');
-  const accountHandlers = findHandler('get', '/account');
 
   test('BUY order reduces balance and creates position', async () => {
-    const user = freshUser();
     setTickerPrice('BTCUSDT', 50000);
+    mockQuery
+      .mockResolvedValueOnce({ rows: [makeAccount(TEST_USER.id, 10000)] }) // getOrCreateAccount
+      .mockResolvedValueOnce({ rows: [] }) // SELECT paper_positions (no existing)
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE paper_accounts
+      .mockResolvedValueOnce({ rows: [] }); // INSERT paper_positions
 
-    // Place buy order for $1000
-    const req = authenticatedReq(user, {
+    const req = authenticatedReq(TEST_USER, {
       body: { symbol: 'BTCUSDT', side: 'buy', quantity: 1000 },
     });
     const res = mockRes();
-
     await runHandlers(orderHandlers, req, res);
 
     expect(res.statusCode).toBe(200);
@@ -230,28 +267,31 @@ describe('POST /order — BUY', () => {
   });
 
   test('symbol is uppercased', async () => {
-    const user = freshUser();
     setTickerPrice('ETHUSDT', 3000);
+    mockQuery
+      .mockResolvedValueOnce({ rows: [makeAccount(TEST_USER.id, 10000)] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
 
-    const req = authenticatedReq(user, {
+    const req = authenticatedReq(TEST_USER, {
       body: { symbol: 'ethusdt', side: 'buy', quantity: 500 },
     });
     const res = mockRes();
-
     await runHandlers(orderHandlers, req, res);
 
     expect(res.body.data.order.symbol).toBe('ETHUSDT');
   });
 
   test('insufficient balance returns 400', async () => {
-    const user = freshUser();
     setTickerPrice('BTCUSDT', 50000);
+    mockQuery
+      .mockResolvedValueOnce({ rows: [makeAccount(TEST_USER.id, 10000)] });
 
-    const req = authenticatedReq(user, {
-      body: { symbol: 'BTCUSDT', side: 'buy', quantity: 15000 }, // more than $10k
+    const req = authenticatedReq(TEST_USER, {
+      body: { symbol: 'BTCUSDT', side: 'buy', quantity: 15000 },
     });
     const res = mockRes();
-
     await runHandlers(orderHandlers, req, res);
 
     expect(res.statusCode).toBe(400);
@@ -259,34 +299,43 @@ describe('POST /order — BUY', () => {
   });
 
   test('unknown symbol (no ticker) returns 404', async () => {
-    const user = freshUser();
     mockRedisGet.mockResolvedValue(null);
 
-    const req = authenticatedReq(user, {
+    const req = authenticatedReq(TEST_USER, {
       body: { symbol: 'FAKECOIN', side: 'buy', quantity: 100 },
     });
     const res = mockRes();
-
     await runHandlers(orderHandlers, req, res);
 
     expect(res.statusCode).toBe(404);
     expect(res.body.error).toMatch(/no ticker data/i);
   });
 
-  test('multiple BUY orders accumulate positions and reduce balance', async () => {
-    const user = freshUser();
+  test('multiple BUY orders accumulate and reduce balance', async () => {
     setTickerPrice('BTCUSDT', 50000);
 
     // First buy: $2000
-    const req1 = authenticatedReq(user, {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [makeAccount(TEST_USER.id, 10000)] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const req1 = authenticatedReq(TEST_USER, {
       body: { symbol: 'BTCUSDT', side: 'buy', quantity: 2000 },
     });
     const res1 = mockRes();
     await runHandlers(orderHandlers, req1, res1);
     expect(res1.body.data.balance).toBe(8000);
 
-    // Second buy: $3000
-    const req2 = authenticatedReq(user, {
+    // Second buy: $3000 (balance is now 8000)
+    mockQuery
+      .mockResolvedValueOnce({ rows: [makeAccount(TEST_USER.id, 8000)] })
+      .mockResolvedValueOnce({ rows: [makePosition(TEST_USER.id, 'BTCUSDT', 'long', 0.04, 50000)] }) // existing same direction
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const req2 = authenticatedReq(TEST_USER, {
       body: { symbol: 'BTCUSDT', side: 'buy', quantity: 3000 },
     });
     const res2 = mockRes();
@@ -302,21 +351,18 @@ describe('POST /order — SELL closes opposite position', () => {
   const orderHandlers = findHandler('post', '/order');
 
   test('SELL on existing BUY position closes it and opens new SELL', async () => {
-    const user = freshUser();
-    setTickerPrice('BTCUSDT', 50000);
+    // Open BUY position: balance 10000, buy $1000 at 50000 => balance 9000, qty 0.02
+    setTickerPrice('BTCUSDT', 55000); // price went up
 
-    // Open BUY position
-    const buyReq = authenticatedReq(user, {
-      body: { symbol: 'BTCUSDT', side: 'buy', quantity: 1000 },
-    });
-    const buyRes = mockRes();
-    await runHandlers(orderHandlers, buyReq, buyRes);
-    expect(buyRes.body.data.balance).toBe(9000);
+    mockQuery
+      .mockResolvedValueOnce({ rows: [makeAccount(TEST_USER.id, 9000)] }) // getOrCreateAccount
+      .mockResolvedValueOnce({ rows: [makePosition(TEST_USER.id, 'BTCUSDT', 'long', 0.02, 50000)] }) // existing position
+      .mockResolvedValueOnce({ rows: [] }) // INSERT paper_trades
+      .mockResolvedValueOnce({ rows: [] }) // DELETE paper_positions
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE paper_accounts
+      .mockResolvedValueOnce({ rows: [] }); // INSERT new paper_positions
 
-    // Price goes up — now sell
-    setTickerPrice('BTCUSDT', 55000);
-
-    const sellReq = authenticatedReq(user, {
+    const sellReq = authenticatedReq(TEST_USER, {
       body: { symbol: 'BTCUSDT', side: 'sell', quantity: 500 },
     });
     const sellRes = mockRes();
@@ -331,26 +377,24 @@ describe('POST /order — SELL closes opposite position', () => {
   });
 
   test('SELL on existing BUY with price drop shows negative PnL', async () => {
-    const user = freshUser();
-    setTickerPrice('BTCUSDT', 50000);
+    setTickerPrice('BTCUSDT', 45000); // price dropped
 
-    // Open BUY position for $2000
-    const buyReq = authenticatedReq(user, {
-      body: { symbol: 'BTCUSDT', side: 'buy', quantity: 2000 },
-    });
-    const buyRes = mockRes();
-    await runHandlers(orderHandlers, buyReq, buyRes);
+    // BUY position: $2000 at 50000 => qty = 0.04
+    mockQuery
+      .mockResolvedValueOnce({ rows: [makeAccount(TEST_USER.id, 8000)] })
+      .mockResolvedValueOnce({ rows: [makePosition(TEST_USER.id, 'BTCUSDT', 'long', 0.04, 50000)] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
 
-    // Price drops 10%
-    setTickerPrice('BTCUSDT', 45000);
-
-    const sellReq = authenticatedReq(user, {
+    const sellReq = authenticatedReq(TEST_USER, {
       body: { symbol: 'BTCUSDT', side: 'sell', quantity: 500 },
     });
     const sellRes = mockRes();
     await runHandlers(orderHandlers, sellReq, sellRes);
 
-    // PnL: (45000 - 50000) * (2000/50000) = -5000 * 0.04 = -200
+    // PnL: (45000 - 50000) * 0.04 = -200
     expect(sellRes.body.data.closedPnl).toBe(-200);
   });
 });
@@ -359,25 +403,21 @@ describe('POST /order — SELL closes opposite position', () => {
 // POST /close/:symbol
 // =========================================================================
 describe('POST /close/:symbol', () => {
-  const orderHandlers = findHandler('post', '/order');
   const closeHandlers = findHandler('post', '/close/:symbol');
 
   test('closes long position with correct PnL', async () => {
-    const user = freshUser();
-    setTickerPrice('ETHUSDT', 3000);
-
-    // Open BUY position for $600
-    const buyReq = authenticatedReq(user, {
-      body: { symbol: 'ETHUSDT', side: 'buy', quantity: 600 },
-    });
-    const buyRes = mockRes();
-    await runHandlers(orderHandlers, buyReq, buyRes);
-    expect(buyRes.body.data.balance).toBe(9400);
-
-    // Price goes to $3300 (10% up)
+    // Position: BUY $600 of ETHUSDT at 3000 => qty = 0.2
+    // Close at 3300 (10% up)
     setTickerPrice('ETHUSDT', 3300);
 
-    const closeReq = authenticatedReq(user, {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [makePosition(TEST_USER.id, 'ETHUSDT', 'long', 0.2, 3000)] }) // SELECT position
+      .mockResolvedValueOnce({ rows: [] }) // INSERT paper_trades
+      .mockResolvedValueOnce({ rows: [] }) // DELETE position
+      .mockResolvedValueOnce({ rows: [makeAccount(TEST_USER.id, 9400)] }) // getOrCreateAccount
+      .mockResolvedValueOnce({ rows: [] }); // UPDATE account
+
+    const closeReq = authenticatedReq(TEST_USER, {
       params: { symbol: 'ETHUSDT' },
     });
     const closeRes = mockRes();
@@ -389,70 +429,65 @@ describe('POST /close/:symbol', () => {
     expect(closeRes.body.data.side).toBe('buy');
     expect(closeRes.body.data.entryPrice).toBe(3000);
     expect(closeRes.body.data.exitPrice).toBe(3300);
-    // PnL: (3300 - 3000) * (600/3000) = 300 * 0.2 = 60
+    // PnL: (3300 - 3000) * 0.2 = 60
     expect(closeRes.body.data.pnl).toBe(60);
     // Balance: 9400 + 600 (returned amount) + 60 (pnl) = 10060
     expect(closeRes.body.data.balance).toBe(10060);
   });
 
   test('closes short position with correct PnL', async () => {
-    const user = freshUser();
-    setTickerPrice('BTCUSDT', 60000);
-
-    // Open SELL (short) position for $1200
-    const sellReq = authenticatedReq(user, {
-      body: { symbol: 'BTCUSDT', side: 'sell', quantity: 1200 },
-    });
-    const sellRes = mockRes();
-    await runHandlers(orderHandlers, sellReq, sellRes);
-    expect(sellRes.body.data.balance).toBe(8800);
-
-    // Price drops to $54000 (10% down — good for shorts)
+    // Position: SELL (short) $1200 of BTCUSDT at 60000 => qty = 0.02
+    // Close at 54000 (10% down, good for shorts)
     setTickerPrice('BTCUSDT', 54000);
 
-    const closeReq = authenticatedReq(user, {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [makePosition(TEST_USER.id, 'BTCUSDT', 'short', 0.02, 60000)] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [makeAccount(TEST_USER.id, 8800)] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const closeReq = authenticatedReq(TEST_USER, {
       params: { symbol: 'btcusdt' }, // should uppercase
     });
     const closeRes = mockRes();
     await runHandlers(closeHandlers, closeReq, closeRes);
 
     expect(closeRes.body.data.side).toBe('sell');
-    // PnL: (60000 - 54000) * (1200/60000) = 6000 * 0.02 = 120
+    // PnL: (60000 - 54000) * 0.02 = 120
     expect(closeRes.body.data.pnl).toBe(120);
     // Balance: 8800 + 1200 + 120 = 10120
     expect(closeRes.body.data.balance).toBe(10120);
   });
 
   test('closing short with price increase shows loss', async () => {
-    const user = freshUser();
-    setTickerPrice('ETHUSDT', 2000);
-
-    // Short $1000
-    const sellReq = authenticatedReq(user, {
-      body: { symbol: 'ETHUSDT', side: 'sell', quantity: 1000 },
-    });
-    const sellRes = mockRes();
-    await runHandlers(orderHandlers, sellReq, sellRes);
-
-    // Price goes UP to $2500 (bad for short)
+    // Short $1000 of ETHUSDT at 2000 => qty = 0.5
+    // Price goes UP to 2500 (bad for short)
     setTickerPrice('ETHUSDT', 2500);
 
-    const closeReq = authenticatedReq(user, {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [makePosition(TEST_USER.id, 'ETHUSDT', 'short', 0.5, 2000)] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [makeAccount(TEST_USER.id, 9000)] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const closeReq = authenticatedReq(TEST_USER, {
       params: { symbol: 'ETHUSDT' },
     });
     const closeRes = mockRes();
     await runHandlers(closeHandlers, closeReq, closeRes);
 
-    // PnL: (2000 - 2500) * (1000/2000) = -500 * 0.5 = -250
+    // PnL: (2000 - 2500) * 0.5 = -250
     expect(closeRes.body.data.pnl).toBe(-250);
     // Balance: 9000 + 1000 - 250 = 9750
     expect(closeRes.body.data.balance).toBe(9750);
   });
 
   test('no open position returns 404', async () => {
-    const user = freshUser();
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // no position found
 
-    const closeReq = authenticatedReq(user, {
+    const closeReq = authenticatedReq(TEST_USER, {
       params: { symbol: 'BTCUSDT' },
     });
     const closeRes = mockRes();
@@ -463,20 +498,14 @@ describe('POST /close/:symbol', () => {
   });
 
   test('no ticker data at close time returns 404', async () => {
-    const user = freshUser();
-    setTickerPrice('SOLUSDT', 150);
-
-    // Open position
-    const buyReq = authenticatedReq(user, {
-      body: { symbol: 'SOLUSDT', side: 'buy', quantity: 300 },
+    mockQuery.mockResolvedValueOnce({
+      rows: [makePosition(TEST_USER.id, 'SOLUSDT', 'long', 2, 150)],
     });
-    const buyRes = mockRes();
-    await runHandlers(orderHandlers, buyReq, buyRes);
 
-    // Ticker goes away
+    // Ticker gone
     mockRedisGet.mockResolvedValue(null);
 
-    const closeReq = authenticatedReq(user, {
+    const closeReq = authenticatedReq(TEST_USER, {
       params: { symbol: 'SOLUSDT' },
     });
     const closeRes = mockRes();
@@ -491,14 +520,13 @@ describe('POST /close/:symbol', () => {
 // GET /positions
 // =========================================================================
 describe('GET /positions', () => {
-  const orderHandlers = findHandler('post', '/order');
   const positionsHandlers = findHandler('get', '/positions');
 
   test('empty when no positions opened', async () => {
-    const user = freshUser();
     mockRedisGet.mockResolvedValue(null);
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // SELECT paper_positions
 
-    const req = authenticatedReq(user);
+    const req = authenticatedReq(TEST_USER);
     const res = mockRes();
     await runHandlers(positionsHandlers, req, res);
 
@@ -507,20 +535,13 @@ describe('GET /positions', () => {
   });
 
   test('lists open positions with current PnL', async () => {
-    const user = freshUser();
-    setTickerPrice('BTCUSDT', 50000);
-
-    // Open a position
-    const buyReq = authenticatedReq(user, {
-      body: { symbol: 'BTCUSDT', side: 'buy', quantity: 2000 },
-    });
-    const buyRes = mockRes();
-    await runHandlers(orderHandlers, buyReq, buyRes);
-
-    // Price moves up
     setTickerPrice('BTCUSDT', 52000);
+    // Position: BUY $2000 at 50000 => qty = 0.04
+    mockQuery.mockResolvedValueOnce({
+      rows: [makePosition(TEST_USER.id, 'BTCUSDT', 'long', 0.04, 50000)],
+    });
 
-    const posReq = authenticatedReq(user);
+    const posReq = authenticatedReq(TEST_USER);
     const posRes = mockRes();
     await runHandlers(positionsHandlers, posReq, posRes);
 
@@ -533,31 +554,25 @@ describe('GET /positions', () => {
     expect(pos.entryPrice).toBe(50000);
     expect(pos.currentPrice).toBe(52000);
     expect(pos.amount).toBe(2000);
-    // PnL: (52000 - 50000) * (2000/50000) = 2000 * 0.04 = 80
+    // PnL: (52000 - 50000) * 0.04 = 80
     expect(pos.pnl).toBe(80);
     // PnL %: 80 / 2000 * 100 = 4%
     expect(pos.pnlPct).toBe(4);
   });
 
   test('shows negative PnL for losing position', async () => {
-    const user = freshUser();
-    setTickerPrice('ETHUSDT', 4000);
-
-    const buyReq = authenticatedReq(user, {
-      body: { symbol: 'ETHUSDT', side: 'buy', quantity: 1000 },
-    });
-    const buyRes = mockRes();
-    await runHandlers(orderHandlers, buyReq, buyRes);
-
-    // Price drops 25%
     setTickerPrice('ETHUSDT', 3000);
+    // Position: BUY $1000 at 4000 => qty = 0.25
+    mockQuery.mockResolvedValueOnce({
+      rows: [makePosition(TEST_USER.id, 'ETHUSDT', 'long', 0.25, 4000)],
+    });
 
-    const posReq = authenticatedReq(user);
+    const posReq = authenticatedReq(TEST_USER);
     const posRes = mockRes();
     await runHandlers(positionsHandlers, posReq, posRes);
 
     const pos = posRes.body.data[0];
-    // PnL: (3000 - 4000) * (1000/4000) = -1000 * 0.25 = -250
+    // PnL: (3000 - 4000) * 0.25 = -250
     expect(pos.pnl).toBe(-250);
     expect(pos.pnlPct).toBe(-25);
   });
@@ -567,14 +582,12 @@ describe('GET /positions', () => {
 // GET /history
 // =========================================================================
 describe('GET /history', () => {
-  const orderHandlers = findHandler('post', '/order');
-  const closeHandlers = findHandler('post', '/close/:symbol');
   const historyHandlers = findHandler('get', '/history');
 
   test('empty when no trades closed', async () => {
-    const user = freshUser();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    const req = authenticatedReq(user);
+    const req = authenticatedReq(TEST_USER);
     const res = mockRes();
     await runHandlers(historyHandlers, req, res);
 
@@ -583,22 +596,22 @@ describe('GET /history', () => {
   });
 
   test('records trade after position is closed', async () => {
-    const user = freshUser();
-    setTickerPrice('BTCUSDT', 40000);
-
-    // Open
-    const buyReq = authenticatedReq(user, {
-      body: { symbol: 'BTCUSDT', side: 'buy', quantity: 800 },
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          symbol: 'BTCUSDT',
+          side: 'long',
+          quantity: 0.02,
+          entry_price: 40000,
+          exit_price: 44000,
+          pnl: 80,
+          opened_at: new Date('2025-01-15T10:00:00Z'),
+          closed_at: new Date('2025-01-15T12:00:00Z'),
+        },
+      ],
     });
-    await runHandlers(orderHandlers, buyReq, mockRes());
 
-    // Close at higher price
-    setTickerPrice('BTCUSDT', 44000);
-    const closeReq = authenticatedReq(user, { params: { symbol: 'BTCUSDT' } });
-    await runHandlers(closeHandlers, closeReq, mockRes());
-
-    // Check history
-    const histReq = authenticatedReq(user);
+    const histReq = authenticatedReq(TEST_USER);
     const histRes = mockRes();
     await runHandlers(historyHandlers, histReq, histRes);
 
@@ -608,49 +621,43 @@ describe('GET /history', () => {
     expect(trade.side).toBe('buy');
     expect(trade.entryPrice).toBe(40000);
     expect(trade.exitPrice).toBe(44000);
-    // PnL: (44000 - 40000) * (800/40000) = 4000 * 0.02 = 80
     expect(trade.pnl).toBe(80);
     expect(trade.closedAt).toBeDefined();
     expect(trade.openedAt).toBeDefined();
   });
 
   test('history is returned in reverse chronological order', async () => {
-    const user = freshUser();
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          symbol: 'ETHUSDT',
+          side: 'long',
+          quantity: 0.167,
+          entry_price: 3000,
+          exit_price: 3100,
+          pnl: 16.7,
+          opened_at: new Date('2025-01-15T14:00:00Z'),
+          closed_at: new Date('2025-01-15T16:00:00Z'),
+        },
+        {
+          symbol: 'BTCUSDT',
+          side: 'long',
+          quantity: 0.01,
+          entry_price: 50000,
+          exit_price: 51000,
+          pnl: 10,
+          opened_at: new Date('2025-01-15T10:00:00Z'),
+          closed_at: new Date('2025-01-15T12:00:00Z'),
+        },
+      ],
+    });
 
-    // Trade 1
-    setTickerPrice('BTCUSDT', 50000);
-    await runHandlers(
-      orderHandlers,
-      authenticatedReq(user, { body: { symbol: 'BTCUSDT', side: 'buy', quantity: 500 } }),
-      mockRes(),
-    );
-    setTickerPrice('BTCUSDT', 51000);
-    await runHandlers(
-      closeHandlers,
-      authenticatedReq(user, { params: { symbol: 'BTCUSDT' } }),
-      mockRes(),
-    );
-
-    // Trade 2
-    setTickerPrice('ETHUSDT', 3000);
-    await runHandlers(
-      orderHandlers,
-      authenticatedReq(user, { body: { symbol: 'ETHUSDT', side: 'buy', quantity: 500 } }),
-      mockRes(),
-    );
-    setTickerPrice('ETHUSDT', 3100);
-    await runHandlers(
-      closeHandlers,
-      authenticatedReq(user, { params: { symbol: 'ETHUSDT' } }),
-      mockRes(),
-    );
-
-    const histReq = authenticatedReq(user);
+    const histReq = authenticatedReq(TEST_USER);
     const histRes = mockRes();
     await runHandlers(historyHandlers, histReq, histRes);
 
     expect(histRes.body.data).toHaveLength(2);
-    // Most recent trade (ETHUSDT) should be first
+    // Most recent trade (ETHUSDT) should be first (DB returns ORDER BY closed_at DESC)
     expect(histRes.body.data[0].symbol).toBe('ETHUSDT');
     expect(histRes.body.data[1].symbol).toBe('BTCUSDT');
   });
@@ -660,30 +667,24 @@ describe('GET /history', () => {
 // GET /account — with positions (unrealized + realized PnL)
 // =========================================================================
 describe('GET /account — with open positions', () => {
-  const orderHandlers = findHandler('post', '/order');
-  const closeHandlers = findHandler('post', '/close/:symbol');
   const accountHandlers = findHandler('get', '/account');
 
   test('equity reflects unrealized PnL from open positions', async () => {
-    const user = freshUser();
-    setTickerPrice('BTCUSDT', 50000);
-
-    // Buy $5000 worth
-    await runHandlers(
-      orderHandlers,
-      authenticatedReq(user, { body: { symbol: 'BTCUSDT', side: 'buy', quantity: 5000 } }),
-      mockRes(),
-    );
-
-    // Price up 10%
     setTickerPrice('BTCUSDT', 55000);
 
-    const accReq = authenticatedReq(user);
+    // Account balance is 5000 (spent 5000 on position)
+    mockQuery
+      .mockResolvedValueOnce({ rows: [makeAccount(TEST_USER.id, 5000)] }) // getOrCreateAccount
+      .mockResolvedValueOnce({
+        rows: [makePosition(TEST_USER.id, 'BTCUSDT', 'long', 0.1, 50000)], // 0.1 BTC at 50000 = $5000
+      }); // SELECT paper_positions
+
+    const accReq = authenticatedReq(TEST_USER);
     const accRes = mockRes();
     await runHandlers(accountHandlers, accReq, accRes);
 
     expect(accRes.body.data.balance).toBe(5000);
-    // Unrealized: (55000 - 50000) * (5000/50000) = 5000 * 0.1 = 500
+    // Unrealized: (55000 - 50000) * 0.1 = 500
     expect(accRes.body.data.unrealizedPnl).toBe(500);
     // Equity: 5000 + 500 = 5500
     expect(accRes.body.data.equity).toBe(5500);
@@ -691,48 +692,21 @@ describe('GET /account — with open positions', () => {
   });
 
   test('realized PnL accumulates from closed trades', async () => {
-    const user = freshUser();
-
-    // Trade 1: Buy at 50000, close at 55000 with $1000 — PnL = +100
-    setTickerPrice('BTCUSDT', 50000);
-    await runHandlers(
-      orderHandlers,
-      authenticatedReq(user, { body: { symbol: 'BTCUSDT', side: 'buy', quantity: 1000 } }),
-      mockRes(),
-    );
-    setTickerPrice('BTCUSDT', 55000);
-    await runHandlers(
-      closeHandlers,
-      authenticatedReq(user, { params: { symbol: 'BTCUSDT' } }),
-      mockRes(),
-    );
-
-    // Trade 2: Buy at 3000, close at 2700 with $600 — PnL = -60
-    setTickerPrice('ETHUSDT', 3000);
-    await runHandlers(
-      orderHandlers,
-      authenticatedReq(user, { body: { symbol: 'ETHUSDT', side: 'buy', quantity: 600 } }),
-      mockRes(),
-    );
-    setTickerPrice('ETHUSDT', 2700);
-    await runHandlers(
-      closeHandlers,
-      authenticatedReq(user, { params: { symbol: 'ETHUSDT' } }),
-      mockRes(),
-    );
-
-    // No open positions, so make Redis return null
     mockRedisGet.mockResolvedValue(null);
 
-    const accReq = authenticatedReq(user);
+    // Account has accumulated realized PnL of 40 (100 from trade1 + -60 from trade2)
+    // Balance = 10040 (10000 + 100 - 60)
+    mockQuery
+      .mockResolvedValueOnce({ rows: [makeAccount(TEST_USER.id, 10040, 40)] })
+      .mockResolvedValueOnce({ rows: [] }); // no open positions
+
+    const accReq = authenticatedReq(TEST_USER);
     const accRes = mockRes();
     await runHandlers(accountHandlers, accReq, accRes);
 
-    // Realized PnL: 100 + (-60) = 40
     expect(accRes.body.data.realizedPnl).toBe(40);
     expect(accRes.body.data.unrealizedPnl).toBe(0);
     expect(accRes.body.data.positionsCount).toBe(0);
-    // Balance should be 10000 + 100 - 60 = 10040
     expect(accRes.body.data.balance).toBe(10040);
   });
 });
@@ -741,29 +715,28 @@ describe('GET /account — with open positions', () => {
 // PnL calculation accuracy
 // =========================================================================
 describe('PnL calculation accuracy', () => {
-  const orderHandlers = findHandler('post', '/order');
   const closeHandlers = findHandler('post', '/close/:symbol');
 
   test('long position: exact PnL = (exit - entry) * quantity', async () => {
-    const user = freshUser();
     const entryPrice = 42567.89;
     const exitPrice = 43210.55;
     const usdAmount = 2500;
     const quantity = usdAmount / entryPrice;
     const expectedPnl = Math.round((exitPrice - entryPrice) * quantity * 100) / 100;
 
-    setTickerPrice('BTCUSDT', entryPrice);
-    await runHandlers(
-      orderHandlers,
-      authenticatedReq(user, { body: { symbol: 'BTCUSDT', side: 'buy', quantity: usdAmount } }),
-      mockRes(),
-    );
-
     setTickerPrice('BTCUSDT', exitPrice);
+
+    mockQuery
+      .mockResolvedValueOnce({ rows: [makePosition(TEST_USER.id, 'BTCUSDT', 'long', quantity, entryPrice)] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [makeAccount(TEST_USER.id, 10000 - usdAmount)] })
+      .mockResolvedValueOnce({ rows: [] });
+
     const closeRes = mockRes();
     await runHandlers(
       closeHandlers,
-      authenticatedReq(user, { params: { symbol: 'BTCUSDT' } }),
+      authenticatedReq(TEST_USER, { params: { symbol: 'BTCUSDT' } }),
       closeRes,
     );
 
@@ -771,25 +744,25 @@ describe('PnL calculation accuracy', () => {
   });
 
   test('short position: exact PnL = (entry - exit) * quantity', async () => {
-    const user = freshUser();
     const entryPrice = 2345.67;
     const exitPrice = 2100.00;
     const usdAmount = 1500;
     const quantity = usdAmount / entryPrice;
     const expectedPnl = Math.round((entryPrice - exitPrice) * quantity * 100) / 100;
 
-    setTickerPrice('ETHUSDT', entryPrice);
-    await runHandlers(
-      orderHandlers,
-      authenticatedReq(user, { body: { symbol: 'ETHUSDT', side: 'sell', quantity: usdAmount } }),
-      mockRes(),
-    );
-
     setTickerPrice('ETHUSDT', exitPrice);
+
+    mockQuery
+      .mockResolvedValueOnce({ rows: [makePosition(TEST_USER.id, 'ETHUSDT', 'short', quantity, entryPrice)] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [makeAccount(TEST_USER.id, 10000 - usdAmount)] })
+      .mockResolvedValueOnce({ rows: [] });
+
     const closeRes = mockRes();
     await runHandlers(
       closeHandlers,
-      authenticatedReq(user, { params: { symbol: 'ETHUSDT' } }),
+      authenticatedReq(TEST_USER, { params: { symbol: 'ETHUSDT' } }),
       closeRes,
     );
 
@@ -797,20 +770,19 @@ describe('PnL calculation accuracy', () => {
   });
 
   test('break-even trade returns PnL of 0', async () => {
-    const user = freshUser();
     setTickerPrice('BTCUSDT', 50000);
 
-    await runHandlers(
-      orderHandlers,
-      authenticatedReq(user, { body: { symbol: 'BTCUSDT', side: 'buy', quantity: 1000 } }),
-      mockRes(),
-    );
+    mockQuery
+      .mockResolvedValueOnce({ rows: [makePosition(TEST_USER.id, 'BTCUSDT', 'long', 0.02, 50000)] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [makeAccount(TEST_USER.id, 9000)] })
+      .mockResolvedValueOnce({ rows: [] });
 
-    // Close at same price
     const closeRes = mockRes();
     await runHandlers(
       closeHandlers,
-      authenticatedReq(user, { params: { symbol: 'BTCUSDT' } }),
+      authenticatedReq(TEST_USER, { params: { symbol: 'BTCUSDT' } }),
       closeRes,
     );
 

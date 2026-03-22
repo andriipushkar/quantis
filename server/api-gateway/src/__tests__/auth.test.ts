@@ -46,6 +46,7 @@ jest.mock('../config/env.js', () => ({
     GOOGLE_CLIENT_ID: 'test-google-client-id',
     GOOGLE_CLIENT_SECRET: 'test-google-client-secret',
     APP_URL: 'http://localhost:5173',
+    ADMIN_EMAILS: ['admin@example.com'],
   },
 }));
 
