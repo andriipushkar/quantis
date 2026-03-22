@@ -12,58 +12,122 @@ function clearToken(): void {
   localStorage.removeItem('quantis_token');
 }
 
-async function request<T>(endpoint: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
-  const { method = 'GET', body } = options;
-  const token = getToken();
+// ── Retry with exponential backoff ─────────────────────────────────
 
-  const config: RequestInit = {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 500;
+const RETRYABLE_STATUSES = new Set([408, 429, 502, 503, 504]);
+
+// In-flight request deduplication for GET requests
+const inflightRequests = new Map<string, Promise<unknown>>();
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function request<T>(
+  endpoint: string,
+  options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
+): Promise<T> {
+  const { method = 'GET', body, signal } = options;
+
+  // Deduplicate identical in-flight GET requests
+  const dedupeKey = method === 'GET' ? `${method}:${endpoint}` : '';
+  if (dedupeKey) {
+    const existing = inflightRequests.get(dedupeKey);
+    if (existing) return existing as Promise<T>;
+  }
+
+  const execute = async (): Promise<T> => {
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (signal?.aborted) throw new DOMException('Request aborted', 'AbortError');
+
+      const token = getToken();
+      const config: RequestInit = {
+        method,
+        signal,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      };
+      if (body) config.body = JSON.stringify(body);
+
+      try {
+        let response = await fetch(`${BASE_URL}${endpoint}`, config);
+
+        // Token refresh on 401
+        if (response.status === 401 && token) {
+          try {
+            const refreshRes = await fetch(`${BASE_URL}/auth/refresh`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              signal,
+            });
+            if (refreshRes.ok) {
+              const rd = await refreshRes.json();
+              setToken(rd.data.accessToken);
+              (config.headers as Record<string, string>).Authorization = `Bearer ${rd.data.accessToken}`;
+              response = await fetch(`${BASE_URL}${endpoint}`, config);
+            } else {
+              clearToken();
+              throw new Error('Session expired');
+            }
+          } catch (refreshErr) {
+            if (refreshErr instanceof DOMException && refreshErr.name === 'AbortError') throw refreshErr;
+            clearToken();
+            throw new Error('Session expired');
+          }
+        }
+
+        // Retry on transient server errors
+        if (RETRYABLE_STATUSES.has(response.status) && attempt < MAX_RETRIES) {
+          const retryAfter = response.headers.get('Retry-After');
+          const delay = retryAfter
+            ? parseInt(retryAfter, 10) * 1000
+            : BASE_DELAY_MS * Math.pow(2, attempt);
+          await sleep(delay);
+          continue;
+        }
+
+        const json = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(json.error || `HTTP ${response.status}`);
+        return json;
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') throw err;
+        if ((err as Error).message === 'Session expired') throw err;
+
+        lastError = err as Error;
+
+        // Retry on network errors (fetch failed)
+        if (attempt < MAX_RETRIES && err instanceof TypeError) {
+          await sleep(BASE_DELAY_MS * Math.pow(2, attempt));
+          continue;
+        }
+
+        throw err;
+      }
+    }
+
+    throw lastError || new Error('Request failed after retries');
   };
 
-  if (body) config.body = JSON.stringify(body);
+  const promise = execute().finally(() => {
+    if (dedupeKey) inflightRequests.delete(dedupeKey);
+  });
 
-  let response = await fetch(`${BASE_URL}${endpoint}`, config);
-
-  if (response.status === 401 && token) {
-    try {
-      const refreshRes = await fetch(`${BASE_URL}/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-      });
-      if (refreshRes.ok) {
-        const rd = await refreshRes.json();
-        setToken(rd.data.accessToken);
-        (config.headers as Record<string, string>).Authorization = `Bearer ${rd.data.accessToken}`;
-        response = await fetch(`${BASE_URL}${endpoint}`, config);
-      } else {
-        clearToken();
-        throw new Error('Session expired');
-      }
-    } catch {
-      clearToken();
-      throw new Error('Session expired');
-    }
-  }
-
-  const json = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(json.error || `HTTP ${response.status}`);
-  }
-
-  return json;
+  if (dedupeKey) inflightRequests.set(dedupeKey, promise);
+  return promise;
 }
 
 const api = {
-  get: <T>(url: string) => request<T>(url),
-  post: <T>(url: string, body?: unknown) => request<T>(url, { method: 'POST', body }),
-  put: <T>(url: string, body?: unknown) => request<T>(url, { method: 'PUT', body }),
-  delete: <T>(url: string) => request<T>(url, { method: 'DELETE' }),
+  get: <T>(url: string, signal?: AbortSignal) => request<T>(url, { signal }),
+  post: <T>(url: string, body?: unknown, signal?: AbortSignal) => request<T>(url, { method: 'POST', body, signal }),
+  put: <T>(url: string, body?: unknown, signal?: AbortSignal) => request<T>(url, { method: 'PUT', body, signal }),
+  delete: <T>(url: string, signal?: AbortSignal) => request<T>(url, { method: 'DELETE', signal }),
 };
 
 // --- Types ---

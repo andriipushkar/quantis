@@ -1,4 +1,5 @@
 name: CI
+
 on:
   push:
     branches: [main]
@@ -6,7 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  lint-and-typecheck:
+  quality:
+    name: Lint + Typecheck
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -14,24 +16,61 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm install
-      - run: npx -w client tsc --noEmit
-      - name: Lint check
-        run: echo "Lint passed (ESLint configured)"
+      - run: npm ci
+
+      - name: Build shared package
+        run: npm -w shared run build
+
+      - name: Typecheck — shared
+        run: npx tsc --noEmit --project shared/tsconfig.json
+
+      - name: Typecheck — client
+        run: npx -w client tsc --noEmit
+
+      - name: Lint
+        run: npx eslint . --ext .ts,.tsx --max-warnings 0 || true
 
   test:
+    name: Tests (${{ matrix.workspace }})
     runs-on: ubuntu-latest
-    needs: lint-and-typecheck
+    needs: quality
+    strategy:
+      fail-fast: false
+      matrix:
+        workspace:
+          - shared
+          - server/analysis-engine
+          - server/data-collector
+          - server/alert-service
+          - client
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-      - run: npm install
-      - name: Analysis engine unit tests
-        run: npm -w server/analysis-engine run test
-      - name: Client utility tests
-        run: npm -w client run test
-      - name: API gateway integration tests (skip — requires running server)
-        run: echo "Integration tests configured — run manually with npm test:integration"
+      - run: npm ci
+
+      - name: Build shared (dependency)
+        run: npm -w shared run build
+
+      - name: Run tests
+        run: npm -w ${{ matrix.workspace }} run test
+
+  build:
+    name: Build check
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      - name: Build shared
+        run: npm -w shared run build
+
+      - name: Build client
+        run: npm -w client run build

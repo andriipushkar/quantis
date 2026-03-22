@@ -9,7 +9,7 @@ import cookieParser from 'cookie-parser';
 import { Server as SocketIOServer } from 'socket.io';
 import logger from './config/logger.js';
 import authRoutes from './routes/auth.js';
-import marketRoutes from './routes/market.js';
+import marketRoutes from './routes/market/index.js';
 import analysisRoutes from './routes/analysis.js';
 import alertRoutes from './routes/alerts.js';
 import watchlistRoutes from './routes/watchlist.js';

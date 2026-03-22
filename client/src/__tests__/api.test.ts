@@ -126,14 +126,16 @@ describe('request() — core fetch wrapper', () => {
   });
 
   it('handles non-JSON response body gracefully', async () => {
+    // Use 400 (non-retryable) so the request fails immediately
     mockFetch.mockReturnValueOnce(
       Promise.resolve({
         ok: false,
-        status: 502,
+        status: 400,
+        headers: new Headers(),
         json: () => Promise.reject(new Error('not json')),
       })
     );
-    await expect(api.getTickers()).rejects.toThrow('HTTP 502');
+    await expect(api.getTickers()).rejects.toThrow('HTTP 400');
   });
 });
 
