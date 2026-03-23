@@ -57,7 +57,29 @@ TELEGRAM_BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrSTUvwxyz
 
 **Cost:** Free
 
-## 4. SMTP (Email)
+## 4. Google OAuth (Sign in with Google)
+
+**Required for:** Google login/registration
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+2. Create project → Enable Google Identity Services API
+3. OAuth consent screen → External → Add `email` + `profile` scopes
+4. Create OAuth client ID (Web application)
+5. Add Authorized JavaScript origins: `http://localhost:5173`
+6. Add Authorized redirect URIs: `http://localhost:5173/auth/google/callback`
+7. Copy Client ID and Client Secret
+
+```env
+GOOGLE_CLIENT_ID=123456789-xxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxx
+VITE_GOOGLE_CLIENT_ID=123456789-xxx.apps.googleusercontent.com
+```
+
+**Cost:** Free
+**Without key:** Google button hidden, email/password auth still works
+**Full guide:** See `setup/Google OAuth.md`
+
+## 5. SMTP (Email)
 
 **Required for:** Alert emails, weekly reports, password reset
 
@@ -142,6 +164,7 @@ SENTRY_DSN=https://xxxxx@sentry.io/12345
 [ ] JWT secrets generated (see 02-ENVIRONMENT-VARIABLES.md)
 [ ] Database running (docker compose up -d postgres redis)
 [ ] NOWPayments API key (for payments)
+[ ] Google OAuth credentials (for Google login, optional)
 [ ] Anthropic API key (for AI Copilot, optional)
 [ ] Telegram bot token (for alerts, optional)
 [ ] SMTP configured (for emails, optional)
