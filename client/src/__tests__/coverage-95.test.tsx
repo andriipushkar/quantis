@@ -212,7 +212,7 @@ vi.mock('@/stores/theme', () => ({
 }));
 
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en', changeLanguage: vi.fn() } }),
+  useTranslation: () => ({ t: (key: string, defaultOrOpts?: any) => typeof defaultOrOpts === 'string' ? defaultOrOpts : key, i18n: { language: 'en', changeLanguage: vi.fn() } }),
   Trans: ({ children }: any) => children,
 }));
 
@@ -254,6 +254,8 @@ vi.mock('@/components/common/NotificationCenter', () => ({
 vi.mock('@/components/common/OnboardingWizard', () => ({
   default: ({ onComplete }: any) => <div data-testid="onboarding-wizard"><button onClick={onComplete}>Complete</button></div>,
 }));
+vi.mock('react-helmet-async', () => ({ Helmet: ({ children }: any) => null, HelmetProvider: ({ children }: any) => children }));
+
 
 // Mock canvas getContext
 HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({

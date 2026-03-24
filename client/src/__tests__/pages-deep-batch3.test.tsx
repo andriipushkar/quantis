@@ -71,7 +71,7 @@ vi.mock('@/stores/market', () => { const s = { tickers: new Map(), pairs: [], up
 vi.mock('@/stores/toast', () => { const s = { toasts: [], addToast: vi.fn(), removeToast: vi.fn() }; return { useToastStore: vi.fn((sel?: any) => typeof sel === 'function' ? sel(s) : s) }; });
 vi.mock('@/stores/notifications', () => { const s = { notifications: [], unreadCount: 0, addNotification: vi.fn(), markAllRead: vi.fn() }; return { useNotificationStore: vi.fn((sel?: any) => typeof sel === 'function' ? sel(s) : s) }; });
 vi.mock('@/stores/theme', () => ({ useThemeStore: vi.fn((sel) => typeof sel === 'function' ? sel({ theme: 'dark', setTheme: vi.fn(), toggleTheme: vi.fn() }) : { theme: 'dark', setTheme: vi.fn(), toggleTheme: vi.fn() }) }));
-vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en', changeLanguage: vi.fn() } }), Trans: ({ children }: any) => children }));
+vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string, defaultOrOpts?: any) => typeof defaultOrOpts === 'string' ? defaultOrOpts : key, i18n: { language: 'en', changeLanguage: vi.fn() } }), Trans: ({ children }: any) => children }));
 vi.mock('react-router-dom', async () => { const actual = await vi.importActual('react-router-dom'); return { ...actual, useNavigate: () => vi.fn(), useParams: () => ({}), useSearchParams: () => [new URLSearchParams(), vi.fn()] }; });
 vi.mock('@/components/auth/GoogleSignInButton', () => ({ GoogleSignInButton: () => <div data-testid="google-signin">Google Sign In</div> }));
 vi.mock('@/components/charts/TradingChart', () => ({ TradingChart: React.forwardRef((_: any, ref: any) => <div ref={ref} data-testid="trading-chart">Chart</div>) }));
@@ -83,6 +83,8 @@ vi.mock('@/components/dashboard/WatchlistStrip', () => ({ WatchlistStrip: () => 
 vi.mock('@/components/dashboard/ConfluenceGauge', () => ({ ConfluenceGauge: () => <div>Gauge</div> }));
 vi.mock('@/components/dashboard/SignalCard', () => ({ SignalCard: () => <div>Signal</div> }));
 vi.mock('@/components/common/ConnectionStatus', () => ({ ConnectionStatus: () => <div>Connected</div>, default: () => <div>Connected</div> }));
+vi.mock('react-helmet-async', () => ({ Helmet: ({ children }: any) => null, HelmetProvider: ({ children }: any) => children }));
+
 
 HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({ clearRect: vi.fn(), beginPath: vi.fn(), arc: vi.fn(), stroke: vi.fn(), fill: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), closePath: vi.fn(), scale: vi.fn(), createLinearGradient: vi.fn().mockReturnValue({ addColorStop: vi.fn() }), fillRect: vi.fn(), strokeRect: vi.fn(), setLineDash: vi.fn(), fillText: vi.fn(), strokeStyle: '', fillStyle: '', lineWidth: 0, lineCap: '', lineJoin: '', font: '', textAlign: '', textBaseline: '' }) as any;
 global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ success: true, data: [] }) }) as any;

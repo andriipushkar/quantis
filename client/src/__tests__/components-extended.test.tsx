@@ -19,7 +19,7 @@ vi.mock('react-router-dom', () => ({
 }));
 
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({ t: (key: string, defaultOrOpts?: any) => typeof defaultOrOpts === 'string' ? defaultOrOpts : key }),
 }));
 
 vi.mock('lucide-react', () => ({

@@ -1,31 +1,39 @@
 # Testing Guide
 
-## Test Types
+## Overview
 
-| Type | Framework | Count | Location |
+| Workspace | Framework | Tests | Coverage |
 |---|---|---|---|
-| Unit Tests | Jest + ts-jest | 42 | `server/analysis-engine/src/__tests__/` |
-| Client Tests | Vitest + jsdom | 23 | `client/src/__tests__/` |
-| API Integration | Jest + fetch | 22 | `server/api-gateway/src/__tests__/` |
-| E2E Tests | Playwright | 7 | `e2e/tests/` |
-| **Total** | | **94** | |
+| shared | Jest + ts-jest | 79 | 100% lines |
+| analysis-engine | Jest + ts-jest | 504 | 99.8% lines |
+| data-collector | Jest + ts-jest | 52 | 100% lines |
+| alert-service | Jest + ts-jest | 61 | 100% lines |
+| api-gateway | Jest + ts-jest | ~1,130 | 99.9% lines |
+| client | Vitest + jsdom | ~1,500 | 94% lines |
+| E2E | Playwright | 36 | — |
+| **Total** | | **~3,362** | |
 
 ## Running Tests
 
 ```bash
-# All automatic tests (unit + client)
+# All unit tests (shared + analysis-engine + data-collector + alert-service + client)
 npm test
 
-# Analysis engine unit tests only
-npm -w server/analysis-engine run test
-
-# Client utility tests only
-npm -w client run test
-
-# API integration tests (requires running server)
+# API gateway tests (includes integration tests)
 npm run test:integration
 
-# E2E tests (requires running frontend)
+# Individual workspace
+npm -w shared run test
+npm -w server/analysis-engine run test
+npm -w server/data-collector run test
+npm -w server/alert-service run test
+npm -w server/api-gateway run test
+npm -w client run test
+
+# With coverage
+npm run test:coverage
+
+# E2E (requires running frontend + backend)
 npm run test:e2e
 
 # Watch mode
@@ -33,62 +41,137 @@ npx -w server/analysis-engine jest --watch
 npx -w client vitest
 ```
 
-## Unit Tests (42 tests)
+## Test Coverage
 
-Located in `server/analysis-engine/src/__tests__/`:
+Coverage is configured in all workspaces:
+- **Jest**: `collectCoverage` in each `jest.config.js` (use `--coverage` flag)
+- **Vitest**: `@vitest/coverage-v8` provider in `vitest.config.ts`
+- **CI**: GitHub Actions runs with `--coverage` and warns below 80%
 
-### calculator.test.ts (21 tests)
-- RSI: correct values, boundary cases, trending data
-- EMA: period 9 calculation, constant values, insufficient data
-- SMA: manual calculation match, period 5, first value
-- ATR: positive values, constant range, insufficient data
-- MACD: empty for insufficient, correct arrays
-- Bollinger Bands: upper > middle > lower
-- VWAP: correct length, empty input
+```bash
+# Generate full coverage report
+npm run test:coverage
 
-### signals.test.ts (21 tests)
-- RSI signal detection: BUY for RSI<25, SELL for RSI>75
-- Stop-loss: entry - 2*ATR for buy, entry + 2*ATR for sell
-- Take-profit: TP1 at 1:1, TP2 at 1:2, TP3 at 1:3 R/R
-- Confidence scoring: monotonicity, range bounds
+# View HTML coverage report (after running coverage)
+npx serve client/coverage/lcov-report
+npx serve server/api-gateway/coverage/lcov-report
+```
 
-## Client Tests (23 tests)
+## Test Structure
 
-Located in `client/src/__tests__/utils.test.ts`:
-- `cn()` utility: merging, conditionals, Tailwind conflicts
-- `formatPrice`: decimals, zero, large numbers
-- `formatPercent`: positive/negative sign, rounding
-- `formatVolume`: B/M/K suffixes, boundaries
+### Server Tests (Jest)
 
-## API Integration Tests (22 tests)
+```
+server/api-gateway/src/__tests__/
+├── auth.test.ts              # Auth routes (register, login, JWT, Google OAuth)
+├── middleware-auth.test.ts    # JWT authentication & tier gating
+├── middleware-csrf.test.ts    # CSRF protection
+├── middleware-rateLimiter.test.ts  # Rate limiting per tier
+├── middleware-security.test.ts    # Response sanitization, content-type
+├── middleware-socketRL.test.ts    # WebSocket rate limiting
+├── subscription.test.ts      # Pricing, checkout, webhook, payment history
+├── mailer.test.ts            # SMTP email sending
+├── wallet-tracker.test.ts    # Wallet tracking CRUD
+├── marketplace-routes.test.ts # Strategy marketplace
+├── influencers.test.ts       # Influencer data & consensus
+├── tokenomics.test.ts        # Token supply & scores
+├── emails.test.ts            # Email template rendering
+├── docs.test.ts              # OpenAPI spec
+├── ohlcv.test.ts             # OHLCV & Renko chart data
+├── config.test.ts            # Database, Redis, Logger, Env config
+├── utils-*.test.ts           # Email templates, indicators, ticker cache
+├── branch-coverage.test.ts   # Branch coverage for edge cases
+├── server-100.test.ts        # Final coverage push
+└── coverage-100.test.ts      # 100% coverage for socket RL, paper trading
+```
 
-Located in `server/api-gateway/src/__tests__/api.test.ts`:
-- Health check
-- Auth: register, duplicate, login, wrong password, profile
-- Market: pairs, tickers, OHLCV, screener, fear-greed, correlation, regime
-- Analysis: indicators, signals, patterns
-- Scanner: risk score
+### Client Tests (Vitest)
 
-**Requires running server at localhost:3001**
+```
+client/src/__tests__/
+├── components.test.tsx           # Badge, Card, SignalCard
+├── components-extended.test.tsx  # Button, Input, Spinner, Toast, ErrorBoundary
+├── components-coverage.test.tsx  # Header, Sidebar, Layout, charts
+├── components-deep.test.tsx      # GlobalSearch, NotificationCenter, SignalFilters
+├── pages-smoke.test.tsx          # All 65 pages render without crash
+├── pages-deep.test.tsx           # Deep tests for 11 critical pages
+├── pages-deep-batch{1,2,3}.test.tsx  # Deep tests by page groups
+├── pages-handlers-{af,gp,qz}.test.tsx  # Event handler tests
+├── pages-branch-coverage.test.tsx # Branch coverage for 20+ pages
+├── coverage-{95,final}.test.tsx  # Final coverage push tests
+├── final-coverage-{1,2}.test.tsx # Additional coverage tests
+├── stores.test.ts                # Zustand stores (market, auth, toast)
+├── stores-coverage.test.ts       # Theme + notification stores
+├── auth-store-deep.test.ts       # Auth store all branches
+├── api.test.ts                   # API service functions
+├── api-coverage.test.ts          # Remaining API functions
+├── socket.test.ts                # Socket.IO service
+├── services-branch-coverage.test.ts  # API + socket branch coverage
+├── hooks.test.ts                 # useWebSocket hook
+├── websocket-coverage.test.ts    # Hook branches (batching, signals)
+├── utils.test.ts                 # Utility functions
+├── throttle.test.ts              # Throttle utility
+├── app-coverage.test.tsx         # App.tsx routes + HomeGate
+├── i18n.test.ts                  # i18n configuration
+└── main.test.tsx                 # Entry point
+```
 
-## E2E Tests (7 tests)
+### E2E Tests (Playwright)
 
-Located in `e2e/tests/`:
-- Landing page loads with title
-- Login page accessible
-- Register page accessible
-- Pricing page shows 4 tiers
-- Status page shows services
-- Registration flow
-- Login error handling
+```
+e2e/tests/
+├── landing.spec.ts     # Landing, login, register, pricing, status pages
+├── auth.spec.ts        # Registration + login error handling
+├── navigation.spec.ts  # Page navigation, 404, links
+├── forms.spec.ts       # Form validation on login/register
+└── responsive.spec.ts  # Mobile (375px), tablet (768px), desktop (1920px)
+```
 
-**Requires running frontend at localhost:5173**
+## Manual Testing Checklist
+
+### Pre-launch verification
+
+- [ ] Register new user → welcome email received
+- [ ] Login → redirects to dashboard
+- [ ] Dashboard loads with live ticker data
+- [ ] Chart page renders candlesticks for BTCUSDT
+- [ ] Screener shows 50+ pairs with filters working
+- [ ] Create alert → alert appears in list
+- [ ] Delete alert → alert removed
+- [ ] Language switch (EN/UA/DE/ES) → all text updates
+- [ ] Theme toggle (dark/light) → persists on reload
+- [ ] Pricing page → Monthly/Yearly toggle shows correct prices
+- [ ] Checkout → creates NOWPayments invoice (sandbox)
+- [ ] Onboarding wizard after first registration
+- [ ] Paper trading → open/close position
+- [ ] Mobile bottom nav → "More" menu shows all pages
+- [ ] Logo click → navigates to home
+
+### API Health Check
+
+```bash
+# Public endpoints
+curl http://localhost:3001/api/v1/market/ticker
+curl http://localhost:3001/api/v1/market/fear-greed
+curl http://localhost:3001/api/v1/market/regime
+curl http://localhost:3001/api/v1/market/screener
+curl http://localhost:3001/api/v1/news
+curl http://localhost:3001/api/v1/influencers
+curl http://localhost:3001/api/v1/tokenomics/BTC
+curl http://localhost:3001/api/v1/docs
+
+# Authenticated (replace TOKEN)
+curl -H "Authorization: Bearer TOKEN" http://localhost:3001/api/v1/auth/me
+curl -H "Authorization: Bearer TOKEN" http://localhost:3001/api/v1/alerts
+curl -H "Authorization: Bearer TOKEN" http://localhost:3001/api/v1/journal
+curl -H "Authorization: Bearer TOKEN" http://localhost:3001/api/v1/social/feed
+```
 
 ## CI/CD
 
-GitHub Actions runs on push to `main` and PRs:
-- TypeScript type checking (`tsc --noEmit`)
-- Unit tests (analysis-engine)
-- Client tests (vitest)
+GitHub Actions (`.github/workflows/ci.yml`) runs on push to `main` and PRs:
+1. **Quality**: TypeScript type checking + ESLint
+2. **Tests**: Matrix across all 6 workspaces with coverage
+3. **Build**: Client + shared package build check
 
-See `.github/workflows/ci.yml`
+Coverage threshold: warns when below 80% per workspace.

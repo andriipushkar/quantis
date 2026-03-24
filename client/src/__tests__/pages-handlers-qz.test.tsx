@@ -204,7 +204,7 @@ vi.mock('@/stores/theme', () => ({
 }));
 
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en', changeLanguage: vi.fn() } }),
+  useTranslation: () => ({ t: (key: string, defaultOrOpts?: any) => typeof defaultOrOpts === 'string' ? defaultOrOpts : key, i18n: { language: 'en', changeLanguage: vi.fn() } }),
   Trans: ({ children }: any) => children,
 }));
 
@@ -256,6 +256,8 @@ vi.mock('@/components/common/ConnectionStatus', () => ({
 vi.mock('@/components/common/OnboardingWizard', () => ({
   default: ({ onComplete }: any) => <div data-testid="onboarding">Onboarding</div>,
 }));
+vi.mock('react-helmet-async', () => ({ Helmet: ({ children }: any) => null, HelmetProvider: ({ children }: any) => children }));
+
 
 // Mock fetch globally — return appropriate data based on URL
 global.fetch = vi.fn().mockImplementation((url: string) => {

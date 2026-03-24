@@ -115,6 +115,8 @@ vi.mock('@/pages/MarketProfile', () => ({ default: () => <div data-testid="marke
 vi.mock('@/pages/MarketRegime', () => ({ default: () => <div data-testid="market-regime-page" /> }));
 vi.mock('@/pages/APIDocs', () => ({ default: () => <div data-testid="api-docs-page" /> }));
 vi.mock('@/pages/NotFound', () => ({ default: () => <div data-testid="not-found-page" /> }));
+vi.mock('react-helmet-async', () => ({ Helmet: ({ children }: any) => null, HelmetProvider: ({ children }: any) => children }));
+
 
 // ── Import App after all mocks ──────────────────────────────────────
 

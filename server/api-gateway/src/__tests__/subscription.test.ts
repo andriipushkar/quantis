@@ -179,39 +179,39 @@ describe('GET /pricing', () => {
     expect(starter.annualPrice).toBe(0);
   });
 
-  test('trader tier costs $29/month', async () => {
+  test('trader tier costs $19/month', async () => {
     const req = mockReq();
     const res = mockRes();
 
     await runHandlers(handlers, req, res);
 
     const trader = res.body.tiers.find((t: any) => t.id === 'trader');
-    expect(trader.price).toBe(29);
-    expect(trader.annualPrice).toBe(278);
+    expect(trader.price).toBe(19);
+    expect(trader.annualPrice).toBe(149);
     expect(trader.currency).toBe('USD');
   });
 
-  test('pro tier costs $79/month and is marked popular', async () => {
+  test('pro tier costs $49/month and is marked popular', async () => {
     const req = mockReq();
     const res = mockRes();
 
     await runHandlers(handlers, req, res);
 
     const pro = res.body.tiers.find((t: any) => t.id === 'pro');
-    expect(pro.price).toBe(79);
-    expect(pro.annualPrice).toBe(758);
+    expect(pro.price).toBe(49);
+    expect(pro.annualPrice).toBe(390);
     expect(pro.popular).toBe(true);
   });
 
-  test('institutional tier costs $249/month', async () => {
+  test('institutional tier costs $149/month', async () => {
     const req = mockReq();
     const res = mockRes();
 
     await runHandlers(handlers, req, res);
 
     const inst = res.body.tiers.find((t: any) => t.id === 'institutional');
-    expect(inst.price).toBe(249);
-    expect(inst.annualPrice).toBe(2390);
+    expect(inst.price).toBe(149);
+    expect(inst.annualPrice).toBe(1190);
   });
 
   test('all tiers have features array', async () => {
@@ -325,7 +325,7 @@ describe('POST /checkout', () => {
     expect(res.statusCode).toBe(201);
     expect(res.body.tier).toBe('trader');
     expect(res.body.period).toBe('monthly');
-    expect(res.body.amount).toBe(29);
+    expect(res.body.amount).toBe(19);
     expect(res.body.status).toBe('pending');
     expect(res.body.invoiceId).toBeDefined();
   });
@@ -341,7 +341,7 @@ describe('POST /checkout', () => {
     await runHandlers(handlers, req, res);
 
     expect(res.statusCode).toBe(201);
-    expect(res.body.amount).toBe(758); // pro annual price
+    expect(res.body.amount).toBe(390); // pro annual price
   });
 
   test('defaults to monthly period', async () => {
@@ -356,7 +356,7 @@ describe('POST /checkout', () => {
 
     expect(res.statusCode).toBe(201);
     expect(res.body.period).toBe('monthly');
-    expect(res.body.amount).toBe(249);
+    expect(res.body.amount).toBe(149);
   });
 
   test('invalid tier returns 400', async () => {

@@ -19,7 +19,7 @@ vi.mock('@/stores/market', () => { const s = { tickers: new Map(), pairs: [], up
 vi.mock('@/stores/toast', () => { const s = { toasts: [], addToast: vi.fn(), removeToast: vi.fn() }; return { useToastStore: vi.fn((sel?: any) => typeof sel === 'function' ? sel(s) : s) }; });
 vi.mock('@/stores/notifications', () => { const s = { notifications: [], unreadCount: 0, addNotification: vi.fn(), markAllRead: vi.fn() }; return { useNotificationStore: vi.fn((sel?: any) => typeof sel === 'function' ? sel(s) : s) }; });
 vi.mock('@/stores/theme', () => { const s = { theme: 'dark', setTheme: vi.fn(), toggleTheme: vi.fn() }; return { useThemeStore: vi.fn((sel?: any) => typeof sel === 'function' ? sel(s) : s) }; });
-vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k, i18n: { language: 'en', changeLanguage: vi.fn() } }), Trans: ({ children }: any) => children }));
+vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string, d?: any) => typeof d === 'string' ? d : k, i18n: { language: 'en', changeLanguage: vi.fn() } }), Trans: ({ children }: any) => children }));
 vi.mock('react-router-dom', async () => { const a = await vi.importActual('react-router-dom'); return { ...a, useNavigate: () => vi.fn(), useParams: () => ({}), useSearchParams: () => [new URLSearchParams(), vi.fn()] }; });
 vi.mock('@/components/charts/TradingChart', () => ({ TradingChart: React.forwardRef((_: any, ref: any) => <div ref={ref}>Chart</div>) }));
 vi.mock('@/components/charts/RSIChart', () => ({ RSIChart: () => <div>RSI</div> }));
@@ -29,6 +29,8 @@ vi.mock('@/components/charts/DrawingToolbar', () => ({ DrawingToolbar: () => <di
 vi.mock('@/components/dashboard/WatchlistStrip', () => ({ WatchlistStrip: () => <div>WS</div> }));
 vi.mock('@/components/dashboard/SignalCard', () => ({ SignalCard: () => <div>SC</div> }));
 vi.mock('@/components/common/ConnectionStatus', () => ({ ConnectionStatus: () => <div>CS</div>, default: () => <div>CS</div> }));
+vi.mock('react-helmet-async', () => ({ Helmet: ({ children }: any) => null, HelmetProvider: ({ children }: any) => children }));
+
 Element.prototype.scrollIntoView = vi.fn();
 global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ success: true, data: [] }) }) as any;
 global.ResizeObserver = vi.fn().mockImplementation(() => ({ observe: vi.fn(), unobserve: vi.fn(), disconnect: vi.fn() }));
