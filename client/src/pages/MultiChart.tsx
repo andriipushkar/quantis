@@ -33,16 +33,19 @@ const ChartPanel: React.FC<ChartPanelProps> = React.memo(({ defaultPair, default
     setLoading(true);
     try {
       const data = await getOHLCV(pair, timeframe, 200);
-      setCandles(
-        data.map((c) => ({
+      // Sanitize: fix high/low and deduplicate timestamps
+      const seen = new Map<number, OHLCVData>();
+      for (const c of data) {
+        seen.set(c.time, {
           time: c.time,
           open: c.open,
-          high: c.high,
-          low: c.low,
+          high: Math.max(c.high, c.open, c.close),
+          low: Math.min(c.low, c.open, c.close),
           close: c.close,
           volume: c.volume,
-        }))
-      );
+        });
+      }
+      setCandles(Array.from(seen.values()).sort((a, b) => a.time - b.time));
     } catch {
       setCandles([]);
     } finally {

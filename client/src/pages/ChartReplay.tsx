@@ -80,8 +80,14 @@ const ChartReplay: React.FC = () => {
       if (res.ok) {
         const json = await res.json();
         if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-          setAllCandles(json.data);
-          setCurrentIndex(Math.min(50, json.data.length - 1));
+          // Sanitize: fix high/low and deduplicate timestamps
+          const seen = new Map<number, OHLCVData>();
+          for (const c of json.data) {
+            seen.set(c.time, { ...c, high: Math.max(c.high, c.open, c.close), low: Math.min(c.low, c.open, c.close) });
+          }
+          const sanitized = Array.from(seen.values()).sort((a: OHLCVData, b: OHLCVData) => a.time - b.time);
+          setAllCandles(sanitized);
+          setCurrentIndex(Math.min(50, sanitized.length - 1));
         } else {
           setAllCandles([]);
         }
