@@ -43,39 +43,9 @@ function useBtcPrice() {
   return { price, change };
 }
 
-/* ---------- Feature data ---------- */
-const features = [
-  {
-    icon: LineChart,
-    title: 'Charts & Indicators',
-    desc: '200+ indicators, real-time candlestick charts with multi-timeframe analysis.',
-  },
-  {
-    icon: Signal,
-    title: 'Trading Signals',
-    desc: 'AI-powered signals with backtested strategies and confidence scoring.',
-  },
-  {
-    icon: Search,
-    title: 'Coin Screener',
-    desc: 'Filter 3 000+ coins by 50+ parameters to find the next breakout.',
-  },
-  {
-    icon: BarChart3,
-    title: 'Derivatives',
-    desc: 'Liquidation heatmaps, funding rates, open interest and more.',
-  },
-  {
-    icon: Brain,
-    title: 'AI Copilot',
-    desc: 'Ask questions in plain English and get instant market analysis.',
-  },
-  {
-    icon: Wallet,
-    title: 'Portfolio Tracker',
-    desc: 'Track your holdings across exchanges in a single dashboard.',
-  },
-];
+/* ---------- Feature icons ---------- */
+const featureIcons = [LineChart, Signal, Search, BarChart3, Brain, Wallet];
+const featureKeys = ['feat1', 'feat2', 'feat3', 'feat4', 'feat5', 'feat6'];
 
 /* ---------- Pricing data ---------- */
 const tiers = [
@@ -147,7 +117,7 @@ const LANG_LABELS: Record<string, string> = { en: 'EN', uk: 'UA', de: 'DE', es: 
 const Landing: React.FC = () => {
   const navigate = useNavigate();
   const { price, change } = useBtcPrice();
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { theme, toggleTheme } = useThemeStore();
 
   const toggleLanguage = () => {
@@ -185,10 +155,10 @@ const Landing: React.FC = () => {
               <span>{LANG_LABELS[i18n.language] || 'EN'}</span>
             </button>
             <Button variant="ghost" size="sm" onClick={() => navigate('/login')}>
-              Log In
+              {t('auth.signIn')}
             </Button>
             <Button size="sm" onClick={() => navigate('/register')}>
-              Sign Up
+              {t('auth.signUp')}
             </Button>
           </div>
         </div>
@@ -230,19 +200,19 @@ const Landing: React.FC = () => {
           )}
 
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight leading-tight">
-            All-in-One Crypto{' '}
+            {t('landing.heroTitle1')}{' '}
             <span className="bg-gold-bronze-gradient bg-clip-text text-transparent">
-              Analysis Platform
+              {t('landing.heroTitle2')}
             </span>
           </h1>
 
           <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto">
-            Charts, Signals, Screener, On-Chain — No More Tab Switching.
+            {t('landing.heroSubtitle')}
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Button size="lg" onClick={() => navigate('/register')}>
-              Get Started Free
+              {t('landing.getStarted')}
               <ArrowRight className="ml-2 w-5 h-5" />
             </Button>
             <Button
@@ -250,7 +220,7 @@ const Landing: React.FC = () => {
               size="lg"
               onClick={() => navigate('/chart/BTCUSDT')}
             >
-              View Demo
+              {t('landing.viewDemo')}
             </Button>
           </div>
         </div>
@@ -260,26 +230,28 @@ const Landing: React.FC = () => {
       <section className="py-24 px-6 bg-card/30">
         <div className="max-w-6xl mx-auto">
           <h2 className="text-3xl font-bold text-center mb-4">
-            Everything You Need
+            {t('landing.featuresTitle')}
           </h2>
           <p className="text-muted-foreground text-center mb-14 max-w-xl mx-auto">
-            Professional-grade tools without the complexity. Analyze, screen, and
-            trade — all from a single dashboard.
+            {t('landing.featuresSubtitle')}
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {features.map((f) => (
-              <div
-                key={f.title}
-                className="bg-card border border-border rounded-xl p-6 transition-all duration-200 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5"
-              >
-                <div className="w-11 h-11 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
-                  <f.icon className="w-5 h-5 text-primary" />
+            {featureKeys.map((key, i) => {
+              const Icon = featureIcons[i];
+              return (
+                <div
+                  key={key}
+                  className="bg-card border border-border rounded-xl p-6 transition-all duration-200 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5"
+                >
+                  <div className="w-11 h-11 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
+                    <Icon className="w-5 h-5 text-primary" />
+                  </div>
+                  <h3 className="text-foreground font-semibold text-lg mb-2">{t(`landing.${key}Title`)}</h3>
+                  <p className="text-muted-foreground text-sm leading-relaxed">{t(`landing.${key}Desc`)}</p>
                 </div>
-                <h3 className="text-foreground font-semibold text-lg mb-2">{f.title}</h3>
-                <p className="text-muted-foreground text-sm leading-relaxed">{f.desc}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
@@ -288,10 +260,10 @@ const Landing: React.FC = () => {
       <section className="py-24 px-6">
         <div className="max-w-6xl mx-auto">
           <h2 className="text-3xl font-bold text-center mb-4">
-            Simple, Transparent Pricing
+            {t('landing.pricingTitle')}
           </h2>
           <p className="text-muted-foreground text-center mb-14 max-w-xl mx-auto">
-            Start for free. Upgrade when you are ready for more power.
+            {t('landing.pricingSubtitle')}
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -306,7 +278,7 @@ const Landing: React.FC = () => {
               >
                 {tier.highlighted && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gold-gradient text-black text-xs font-bold px-3 py-1 rounded-full">
-                    Most Popular
+                    {t('landing.mostPopular')}
                   </div>
                 )}
                 <h3 className="text-foreground font-semibold text-lg">{tier.name}</h3>
@@ -343,13 +315,13 @@ const Landing: React.FC = () => {
       <footer className="border-t border-border py-8 px-6">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <span className="text-sm text-muted-foreground">
-            &copy; 2026 Quantis. All rights reserved.
+            {t('landing.footer')}
           </span>
           <div className="flex items-center gap-6 text-sm text-muted-foreground">
-            <button className="hover:text-foreground transition-colors" onClick={() => navigate('/terms')}>Terms</button>
-            <button className="hover:text-foreground transition-colors" onClick={() => navigate('/privacy')}>Privacy</button>
-            <button className="hover:text-foreground transition-colors">Contact</button>
-            <button className="hover:text-foreground transition-colors" onClick={() => navigate('/status')}>Status</button>
+            <button className="hover:text-foreground transition-colors" onClick={() => navigate('/terms')}>{t('landing.terms')}</button>
+            <button className="hover:text-foreground transition-colors" onClick={() => navigate('/privacy')}>{t('landing.privacy')}</button>
+            <button className="hover:text-foreground transition-colors">{t('landing.contact')}</button>
+            <button className="hover:text-foreground transition-colors" onClick={() => navigate('/status')}>{t('landing.status')}</button>
           </div>
         </div>
       </footer>
