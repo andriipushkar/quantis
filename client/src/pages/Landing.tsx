@@ -147,7 +147,7 @@ const Landing: React.FC = () => {
 
           <h1 className="text-4xl sm:text-5xl md:text-7xl font-extrabold tracking-tight leading-[1.08]">
             {t('landing.heroTitle1')}{' '}
-            <span className="bg-gold-bronze-gradient bg-clip-text text-transparent">{t('landing.heroTitle2')}</span>
+            <span className="text-primary" style={{ background: 'linear-gradient(135deg, #8B6914, #A0722A, #C9A84C, #8B6914)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>{t('landing.heroTitle2')}</span>
           </h1>
 
           <p className="text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto">{t('landing.heroSubtitle')}</p>

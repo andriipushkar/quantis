@@ -58,7 +58,7 @@ export default {
       backgroundImage: {
         'gold-gradient': 'linear-gradient(135deg, #C9A84C 0%, #E8D48B 50%, #C9A84C 100%)',
         'bronze-gradient': 'linear-gradient(135deg, #CD7F32 0%, #E6A85C 50%, #CD7F32 100%)',
-        'gold-bronze-gradient': 'linear-gradient(135deg, #B8942F 0%, #CD7F32 30%, #E6A85C 60%, #B8942F 100%)',
+        'gold-bronze-gradient': 'linear-gradient(135deg, #8B6914 0%, #A0722A 30%, #C9A84C 60%, #8B6914 100%)',
       },
       boxShadow: {
         'gold-sm': '0 2px 8px rgba(201, 168, 76, 0.1)',
