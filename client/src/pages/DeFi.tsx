@@ -138,7 +138,7 @@ const DeFi: React.FC = () => {
         </div>
         <div className="bg-card border border-border rounded-xl p-5">
           <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Avg APY</p>
-          <p className="text-2xl font-bold text-primary">{data.avgApy.toFixed(1)}%</p>
+          <p className="text-2xl font-bold text-primary">{(data.avgApy ?? 0).toFixed(1)}%</p>
         </div>
       </div>
 
@@ -194,13 +194,13 @@ const DeFi: React.FC = () => {
                   </td>
                   <td className="px-4 py-3 font-mono text-sm text-foreground">{formatTvl(p.tvl)}</td>
                   <td className="px-4 py-3">
-                    <span className={cn('text-sm font-medium', p.tvlChange24h >= 0 ? 'text-green-400' : 'text-red-400')}>
-                      {p.tvlChange24h >= 0 ? '+' : ''}{p.tvlChange24h.toFixed(2)}%
+                    <span className={cn('text-sm font-medium', (p.tvlChange24h ?? 0) >= 0 ? 'text-green-400' : 'text-red-400')}>
+                      {(p.tvlChange24h ?? 0) >= 0 ? '+' : ''}{(p.tvlChange24h ?? 0).toFixed(2)}%
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={cn('text-sm font-medium', p.apy > 0 ? 'text-primary' : 'text-muted-foreground')}>
-                      {p.apy > 0 ? `${p.apy.toFixed(1)}%` : '--'}
+                    <span className={cn('text-sm font-medium', (p.apy ?? 0) > 0 ? 'text-primary' : 'text-muted-foreground')}>
+                      {(p.apy ?? 0) > 0 ? `${(p.apy ?? 0).toFixed(1)}%` : '--'}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -210,7 +210,7 @@ const DeFi: React.FC = () => {
                           key={i}
                           className={cn(
                             'w-2 h-2 rounded-full',
-                            i < p.riskRating ? 'bg-primary' : 'bg-secondary'
+                            i < (p.riskRating ?? 3) ? 'bg-primary' : 'bg-secondary'
                           )}
                         />
                       ))}
