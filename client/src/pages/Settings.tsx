@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/stores/auth';
 import { useThemeStore } from '@/stores/theme';
 import {
@@ -59,7 +60,8 @@ const Settings: React.FC = () => {
 
   const [displayName, setDisplayName] = useState(user?.display_name || '');
   const [timezone, setTimezone] = useState(user?.timezone || 'UTC');
-  const [language, setLanguage] = useState(user?.language || 'en');
+  const { i18n } = useTranslation();
+  const [language, setLanguage] = useState(user?.language || i18n.language || 'en');
   const [saving, setSaving] = useState(false);
 
   // 2FA state
@@ -225,16 +227,13 @@ const Settings: React.FC = () => {
           <div className="space-y-1.5">
             <select
               value={language}
-              onChange={(e) => setLanguage(e.target.value)}
+              onChange={(e) => { setLanguage(e.target.value); i18n.changeLanguage(e.target.value); }}
               className="flex h-10 w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary transition-all duration-200"
             >
               <option value="en">English</option>
-              <option value="ua" disabled>
-                Ukrainian (coming soon)
-              </option>
-              <option value="ru" disabled>
-                Russian (coming soon)
-              </option>
+              <option value="uk">Українська</option>
+              <option value="de">Deutsch</option>
+              <option value="es">Español</option>
             </select>
           </div>
         </CardContent>

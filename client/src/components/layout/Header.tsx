@@ -15,8 +15,12 @@ export const Header: React.FC = () => {
   const { theme, toggleTheme } = useThemeStore();
   const ticker = tickers.get(selectedPair);
 
+  const LANGS = ['en', 'uk', 'de', 'es'] as const;
+  const LANG_LABELS: Record<string, string> = { en: 'EN', uk: 'UA', de: 'DE', es: 'ES' };
+
   const toggleLanguage = () => {
-    const nextLang = i18n.language === 'en' ? 'es' : 'en';
+    const idx = LANGS.indexOf(i18n.language as typeof LANGS[number]);
+    const nextLang = LANGS[(idx + 1) % LANGS.length];
     i18n.changeLanguage(nextLang);
   };
 
@@ -76,10 +80,11 @@ export const Header: React.FC = () => {
 
         <button
           onClick={toggleLanguage}
-          className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+          className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all text-xs font-medium"
           title="Switch language"
         >
           <Globe className="w-4 h-4" />
+          <span>{LANG_LABELS[i18n.language] || 'EN'}</span>
         </button>
 
         <NotificationCenter />
