@@ -200,8 +200,9 @@ const Landing: React.FC = () => {
           )}
 
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight leading-tight">
-            {t('landing.heroTitle1')}{' '}
-            <span className="bg-gold-bronze-gradient bg-clip-text text-transparent">
+            {t('landing.heroTitle1')}
+            <br />
+            <span className="bg-gold-bronze-gradient bg-clip-text text-transparent drop-shadow-sm">
               {t('landing.heroTitle2')}
             </span>
           </h1>
