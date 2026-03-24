@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/common/Card';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { useAuthStore } from '@/stores/auth';
+import { useThemeStore } from '@/stores/theme';
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 
 const OnboardingWizard = lazy(() => import('@/components/common/OnboardingWizard'));
@@ -26,10 +27,17 @@ const registerSchema = z
 type RegisterForm = z.infer<typeof registerSchema>;
 
 const Register: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { register: registerUser, isLoading, error, clearError } = useAuthStore();
+  const { theme, toggleTheme } = useThemeStore();
   const [showOnboarding, setShowOnboarding] = useState(false);
+
+  const toggleLang = () => {
+    const langs = ['en','uk','de','es'];
+    const idx = langs.indexOf(i18n.language);
+    i18n.changeLanguage(langs[(idx+1)%langs.length]);
+  };
 
   const {
     register,
@@ -64,11 +72,20 @@ const Register: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4 relative">
+      {/* Top-right controls */}
+      <div className="absolute top-4 right-4 flex items-center gap-2">
+        <button onClick={toggleTheme} className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all" title="Toggle theme">
+          {theme === 'dark' ? <span className="text-sm">☀️</span> : <span className="text-sm">🌙</span>}
+        </button>
+        <button onClick={toggleLang} className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all text-xs font-medium" title="Switch language">
+          🌐 {{ en: 'EN', uk: 'UA', de: 'DE', es: 'ES' }[i18n.language] || 'EN'}
+        </button>
+      </div>
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 rounded-xl bg-gold-gradient flex items-center justify-center mb-4">
+          <div className="w-12 h-12 rounded-xl bg-gold-bronze-gradient flex items-center justify-center mb-4">
             <span className="text-black font-bold text-xl">Q</span>
           </div>
           <h1 className="text-primary font-bold text-2xl tracking-wide">Quantis</h1>

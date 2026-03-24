@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/stores/auth';
-import { Check, ChevronDown, ChevronUp, Crown, Zap, ArrowLeft } from 'lucide-react';
+import { useThemeStore } from '@/stores/theme';
+import { Check, ChevronDown, ChevronUp, Crown, Zap, ArrowLeft, Sun, Moon, Globe } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
 interface Tier {
@@ -23,6 +25,15 @@ const Pricing: React.FC = () => {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const userTier = useAuthStore((s) => s.user?.tier || 'starter');
   const navigate = useNavigate();
+  const { i18n } = useTranslation();
+  const { theme, toggleTheme } = useThemeStore();
+
+  const LANGS = ['en', 'uk', 'de', 'es'] as const;
+  const LANG_LABELS: Record<string, string> = { en: 'EN', uk: 'UA', de: 'DE', es: 'ES' };
+  const toggleLanguage = () => {
+    const idx = LANGS.indexOf(i18n.language as typeof LANGS[number]);
+    i18n.changeLanguage(LANGS[(idx + 1) % LANGS.length]);
+  };
 
   useEffect(() => {
     fetch('/api/v1/subscription/pricing')
@@ -106,6 +117,13 @@ const Pricing: React.FC = () => {
             <span className="text-primary font-bold text-lg tracking-wide">Quantis</span>
           </Link>
           <div className="flex items-center gap-3">
+            <button onClick={toggleTheme} className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all" title="Toggle theme">
+              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+            <button onClick={toggleLanguage} className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all text-xs font-medium" title="Switch language">
+              <Globe className="w-4 h-4" />
+              <span>{LANG_LABELS[i18n.language] || 'EN'}</span>
+            </button>
             {isAuthenticated ? (
               <Link
                 to="/dashboard"

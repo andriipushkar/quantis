@@ -12,6 +12,9 @@ import {
   Check,
 } from 'lucide-react';
 import { Button } from '@/components/common/Button';
+import { useTranslation } from 'react-i18next';
+import { useThemeStore } from '@/stores/theme';
+import { Sun, Moon, Globe } from 'lucide-react';
 
 /* ---------- BTC price hook ---------- */
 function useBtcPrice() {
@@ -138,9 +141,20 @@ const tiers = [
 ];
 
 /* ---------- Component ---------- */
+const LANGS = ['en', 'uk', 'de', 'es'] as const;
+const LANG_LABELS: Record<string, string> = { en: 'EN', uk: 'UA', de: 'DE', es: 'ES' };
+
 const Landing: React.FC = () => {
   const navigate = useNavigate();
   const { price, change } = useBtcPrice();
+  const { i18n } = useTranslation();
+  const { theme, toggleTheme } = useThemeStore();
+
+  const toggleLanguage = () => {
+    const idx = LANGS.indexOf(i18n.language as typeof LANGS[number]);
+    const nextLang = LANGS[(idx + 1) % LANGS.length];
+    i18n.changeLanguage(nextLang);
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
@@ -155,6 +169,21 @@ const Landing: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+              title="Toggle theme"
+            >
+              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={toggleLanguage}
+              className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all text-xs font-medium"
+              title="Switch language"
+            >
+              <Globe className="w-4 h-4" />
+              <span>{LANG_LABELS[i18n.language] || 'EN'}</span>
+            </button>
             <Button variant="ghost" size="sm" onClick={() => navigate('/login')}>
               Log In
             </Button>

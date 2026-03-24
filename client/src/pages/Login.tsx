@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/common/Card';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { useAuthStore } from '@/stores/auth';
+import { useThemeStore } from '@/stores/theme';
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 
 const loginSchema = z.object({
@@ -21,6 +22,7 @@ const Login: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { login, isLoading, error, clearError } = useAuthStore();
+  const { theme, toggleTheme } = useThemeStore();
 
   const {
     register,
@@ -41,11 +43,21 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4 relative">
+      {/* Top-right controls */}
+      <div className="absolute top-4 right-4 flex items-center gap-2">
+        <button onClick={toggleTheme} className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all" title="Toggle theme">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">{theme === 'dark' ? <circle cx="12" cy="12" r="5" strokeWidth={2}/> : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />}</svg>
+        </button>
+        <button onClick={() => { const langs = ['en','uk','de','es']; const idx = langs.indexOf(i18n.language); i18n.changeLanguage(langs[(idx+1)%langs.length]); }} className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all text-xs font-medium">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" strokeWidth={2}/><path strokeWidth={2} d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+          <span>{{ en: 'EN', uk: 'UA', de: 'DE', es: 'ES' }[i18n.language] || 'EN'}</span>
+        </button>
+      </div>
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 rounded-xl bg-gold-gradient flex items-center justify-center mb-4">
+          <div className="w-12 h-12 rounded-xl bg-gold-bronze-gradient flex items-center justify-center mb-4">
             <span className="text-black font-bold text-xl">Q</span>
           </div>
           <h1 className="text-primary font-bold text-2xl tracking-wide">Quantis</h1>
