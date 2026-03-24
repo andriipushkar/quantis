@@ -37,8 +37,11 @@ const BitcoinModels: React.FC = () => {
       setLoading(true);
       try {
         const res = await fetch('/api/v1/market/btc-models');
-        const json = await res.json();
-        if (!res.ok || !json.success) {
+        if (!res.ok) { setError('Failed to load data'); return; }
+        const text = await res.text();
+        let json: any;
+        try { json = JSON.parse(text); } catch { setError('Invalid response'); return; }
+        if (!json.success || !json.data) {
           setError(json.error || 'Failed to load data');
         } else {
           setData(json.data);
@@ -83,7 +86,7 @@ const BitcoinModels: React.FC = () => {
           <div className="bg-card border border-border rounded-xl p-6 flex items-center justify-between flex-wrap gap-4">
             <div>
               <p className="text-xs text-muted-foreground mb-1">Current BTC Price</p>
-              <p className="text-3xl font-bold font-mono text-foreground">${data.currentPrice.toLocaleString()}</p>
+              <p className="text-3xl font-bold font-mono text-foreground">${(data.currentPrice ?? 0).toLocaleString()}</p>
             </div>
             {overall && (
               <div className={cn('flex items-center gap-2 rounded-full border px-4 py-2', overall.bg)}>
@@ -112,7 +115,7 @@ const BitcoinModels: React.FC = () => {
                   <div className="flex items-end gap-6">
                     <div>
                       <p className="text-xs text-muted-foreground">Fair Value</p>
-                      <p className="text-xl font-bold font-mono text-foreground">${model.fairValue.toLocaleString()}</p>
+                      <p className="text-xl font-bold font-mono text-foreground">${(model.fairValue ?? 0).toLocaleString()}</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Deviation</p>
@@ -120,7 +123,7 @@ const BitcoinModels: React.FC = () => {
                         'text-lg font-bold font-mono',
                         model.deviation > 0 ? 'text-danger' : model.deviation < -10 ? 'text-success' : 'text-muted-foreground'
                       )}>
-                        {model.deviation > 0 ? '+' : ''}{model.deviation.toFixed(1)}%
+                        {(model.deviation ?? 0) > 0 ? '+' : ''}{(model.deviation ?? 0).toFixed(1)}%
                       </p>
                     </div>
                   </div>
