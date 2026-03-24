@@ -71,7 +71,17 @@ const Chart: React.FC = () => {
     setLoading(true);
     try {
       const data = await getOHLCV(currentSymbol, selectedTimeframe, 500);
-      setCandles(data);
+      // Fix invalid OHLCV: ensure high >= max(open,close) and low <= min(open,close)
+      // Also deduplicate by timestamp (keep last occurrence)
+      const seen = new Map<number, OHLCVData>();
+      for (const c of data) {
+        seen.set(c.time, {
+          ...c,
+          high: Math.max(c.high, c.open, c.close),
+          low: Math.min(c.low, c.open, c.close),
+        });
+      }
+      setCandles(Array.from(seen.values()).sort((a, b) => a.time - b.time));
     } catch {
       setCandles([]);
     } finally {
