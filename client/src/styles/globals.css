@@ -27,6 +27,9 @@
     --ring: 42 52% 54%;
     --success: 155 82% 43%;
     --danger: 354 79% 63%;
+    --bronze: 30 60% 50%;
+    --bronze-light: 30 55% 62%;
+    --bronze-dark: 30 65% 38%;
     --scrollbar-track: #0B0E11;
     --scrollbar-thumb: #1E2329;
     --scrollbar-thumb-hover: #2B3139;
@@ -51,6 +54,9 @@
     --ring: 42 52% 42%;
     --success: 155 70% 38%;
     --danger: 354 70% 55%;
+    --bronze: 30 60% 45%;
+    --bronze-light: 30 50% 55%;
+    --bronze-dark: 30 65% 35%;
     --scrollbar-track: #F0EDE6;
     --scrollbar-thumb: #D4CDBE;
     --scrollbar-thumb-hover: #B8B0A0;

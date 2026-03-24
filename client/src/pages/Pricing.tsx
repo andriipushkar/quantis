@@ -196,7 +196,7 @@ const Pricing: React.FC = () => {
                 {/* Popular badge */}
                 {isPopular && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <span className="inline-flex items-center gap-1 bg-gold-gradient text-black text-xs font-bold px-3 py-1 rounded-full">
+                    <span className="inline-flex items-center gap-1 bg-bronze-gradient text-black text-xs font-bold px-3 py-1 rounded-full shadow-bronze-sm">
                       <Crown className="w-3 h-3" />
                       Most Popular
                     </span>

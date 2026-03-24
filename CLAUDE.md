@@ -28,6 +28,7 @@ Monorepo with npm workspaces:
 ## Design System
 Premium dark theme:
 - Primary/Gold: #C9A84C
+- Bronze: #CD7F32 (accent for badges, CTAs, highlights)
 - Background: #0B0E11
 - Surface: #141821
 - Success/Green: #0ECB81

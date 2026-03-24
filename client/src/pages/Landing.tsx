@@ -202,7 +202,7 @@ const Landing: React.FC = () => {
 
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight leading-tight">
             All-in-One Crypto{' '}
-            <span className="bg-gold-gradient bg-clip-text text-transparent">
+            <span className="bg-gold-bronze-gradient bg-clip-text text-transparent">
               Analysis Platform
             </span>
           </h1>

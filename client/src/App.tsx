@@ -74,7 +74,7 @@ const NotFound = lazy(() => import('@/pages/NotFound'));
 const PageLoader: React.FC = () => (
   <div className="flex items-center justify-center h-[60vh]">
     <div className="flex flex-col items-center gap-3">
-      <div className="w-10 h-10 rounded-lg bg-gold-gradient flex items-center justify-center animate-pulse">
+      <div className="w-10 h-10 rounded-lg bg-gold-bronze-gradient flex items-center justify-center animate-pulse">
         <span className="text-black font-bold text-lg">Q</span>
       </div>
       <span className="text-muted-foreground text-sm">Loading...</span>

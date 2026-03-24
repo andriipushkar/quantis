@@ -10,6 +10,8 @@ const buttonVariants = cva(
       variant: {
         default:
           'bg-gold-gradient text-black hover:shadow-gold-md active:scale-[0.98]',
+        bronze:
+          'bg-bronze-gradient text-black hover:shadow-bronze-md active:scale-[0.98]',
         secondary:
           'border border-primary/50 bg-transparent text-primary hover:bg-primary/10 hover:border-primary',
         destructive:

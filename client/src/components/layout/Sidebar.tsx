@@ -171,7 +171,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
       {/* Logo */}
       <NavLink to="/" className="flex items-center h-14 px-4 border-b border-border hover:bg-secondary/50 transition-colors">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-gold-gradient flex items-center justify-center flex-shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-gold-bronze-gradient shadow-bronze-sm flex items-center justify-center flex-shrink-0">
             <span className="text-black font-bold text-sm">Q</span>
           </div>
           {!collapsed && (
