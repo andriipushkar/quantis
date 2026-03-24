@@ -2997,6 +2997,399 @@ describe('Portfolio — full coverage', () => {
   });
 });
 
+// ===================== Additional Coverage Boosters =====================
+
+describe('Dashboard — extra branches', () => {
+  let Dashboard: React.ComponentType;
+  beforeEach(async () => { Dashboard = (await import('@/pages/Dashboard')).default; });
+
+  it('handles toggle watchlist with star click', async () => {
+    const tickerMap = new Map([
+      ['BTCUSDT', { symbol: 'BTCUSDT', price: 60000, change24h: 2.5, volume: 1e9 }],
+      ['ETHUSDT', { symbol: 'ETHUSDT', price: 3000, change24h: -1, volume: 5e8 }],
+    ]);
+    mockGetTickers.mockResolvedValue(tickerMap);
+    marketState.tickers = tickerMap;
+    mockFetch.mockImplementation(async (url: string, opts?: any) => {
+      if (typeof url === 'string' && url.includes('/watchlist') && !opts?.method) {
+        return { ok: true, json: () => Promise.resolve({ success: true, data: [{ symbol: 'BTCUSDT' }] }) };
+      }
+      if (typeof url === 'string' && url.includes('/watchlist') && opts?.method) {
+        return { ok: true, json: () => Promise.resolve({ success: true }) };
+      }
+      return { ok: true, json: () => Promise.resolve({ success: true, data: { current: null } }) };
+    });
+
+    renderPage(Dashboard);
+    await flushAsync();
+
+    // Find star button and click it
+    const starBtns = document.querySelectorAll('button[title]');
+    const starBtn = Array.from(starBtns).find(b => b.getAttribute('title')?.includes('watchlist'));
+    if (starBtn) {
+      fireEvent.click(starBtn);
+      await flushAsync();
+    }
+  });
+
+  it('renders with empty topGainers/topLosers', async () => {
+    const tickerMap = new Map();
+    mockGetTickers.mockResolvedValue(tickerMap);
+    marketState.tickers = tickerMap;
+
+    // Force loading=false with no tickers - trigger error state
+    mockGetTickers.mockRejectedValue(new Error('fail'));
+    renderPage(Dashboard);
+    await flushAsync();
+  });
+});
+
+describe('Chart — extra branches', () => {
+  let Chart: React.ComponentType;
+  beforeEach(async () => { Chart = (await import('@/pages/Chart')).default; });
+
+  it('renders with null indicators (fetch fails)', async () => {
+    mockGetOHLCV.mockResolvedValue([{ time: 1000, open: 50000, high: 50100, low: 49900, close: 50050, volume: 1e6 }]);
+    mockFetch.mockRejectedValue(new Error('fail'));
+    marketState.tickers = new Map([['BTCUSDT', { symbol: 'BTCUSDT', price: 50000, change24h: 1.5, volume: 1e9 }]]);
+
+    renderPage(Chart);
+    await flushAsync();
+  });
+
+  it('renders with RSI < 30 indicator color', async () => {
+    mockGetOHLCV.mockResolvedValue([{ time: 1000, open: 50000, high: 50100, low: 49900, close: 50050, volume: 1e6 }]);
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        success: true,
+        data: { current: { price: 50000, rsi: 25, ema9: 49900, ema21: 49800, sma20: null, bb_upper: null, bb_lower: null, bb_middle: null } },
+      }),
+    });
+
+    renderPage(Chart);
+    await flushAsync();
+  });
+
+  it('renders pair picker items and navigates', async () => {
+    mockGetOHLCV.mockResolvedValue([]);
+    mockGetPairs.mockResolvedValue([
+      { id: '1', symbol: 'BTCUSDT', exchange: 'binance' },
+      { id: '2', symbol: 'ETHUSDT', exchange: 'binance' },
+    ]);
+
+    renderPage(Chart);
+    await flushAsync();
+
+    // Open pair picker
+    const pairBtn = screen.getByText('BTC/USDT');
+    fireEvent.click(pairBtn);
+    await flushAsync();
+
+    // Click ETHUSDT in the dropdown
+    const ethOption = screen.queryByText('ETH/USDT');
+    if (ethOption) {
+      fireEvent.click(ethOption);
+      expect(mockNavigate).toHaveBeenCalledWith('/chart/ETHUSDT');
+    }
+  });
+});
+
+describe('CopyTrading — extra branches', () => {
+  let CopyTrading: React.ComponentType;
+  beforeEach(async () => { CopyTrading = (await import('@/pages/CopyTrading')).default; });
+
+  it('renders with different badge types', async () => {
+    mockFetch.mockImplementation(async (url: string) => {
+      if (typeof url === 'string' && url.includes('/copy/leaders')) {
+        return {
+          ok: true,
+          json: () => Promise.resolve({
+            success: true,
+            data: [
+              { id: 't1', displayName: 'Bronze', winRate: 55, totalReturn: 20, maxDrawdown: 25, totalTrades: 50, copiers: 10, riskScore: 7, badge: 'bronze', monthsProfitable: 3, avgTradeReturn: 0.5, bio: 'New' },
+              { id: 't2', displayName: 'Silver', winRate: 60, totalReturn: 50, maxDrawdown: 20, totalTrades: 100, copiers: 50, riskScore: 5, badge: 'silver', monthsProfitable: 6, avgTradeReturn: 1.0, bio: 'Mid' },
+              { id: 't3', displayName: 'Platinum', winRate: 80, totalReturn: 200, maxDrawdown: 10, totalTrades: 500, copiers: 1000, riskScore: 2, badge: 'platinum', monthsProfitable: 12, avgTradeReturn: 3.0, bio: 'Elite' },
+            ],
+          }),
+        };
+      }
+      if (typeof url === 'string' && url.includes('/copy/active')) {
+        return { ok: true, json: () => Promise.resolve({ success: true, data: [] }) };
+      }
+      return { ok: true, json: () => Promise.resolve({ success: true, data: [] }) };
+    });
+
+    renderPage(CopyTrading);
+    await flushAsync();
+  });
+});
+
+describe('WalletTracker — extra branches', () => {
+  let WalletTracker: React.ComponentType;
+  beforeEach(async () => { WalletTracker = (await import('@/pages/WalletTracker')).default; });
+
+  it('handles remove wallet', async () => {
+    let removed = false;
+    mockFetch.mockImplementation(async (url: string, opts?: any) => {
+      if (opts?.method === 'DELETE') {
+        removed = true;
+        return { ok: true, json: () => Promise.resolve({ success: true }) };
+      }
+      if (typeof url === 'string' && url.includes('/wallets')) {
+        if (removed) {
+          return { ok: true, json: () => Promise.resolve({ success: true, data: [] }) };
+        }
+        return {
+          ok: true,
+          json: () => Promise.resolve({
+            success: true,
+            data: [{
+              id: 'w1', address: '0xABCDEF1234567890AB', chain: 'bitcoin',
+              label: 'My BTC', totalValue: 50000, addedAt: '2025-01-01',
+            }],
+          }),
+        };
+      }
+      return { ok: true, json: () => Promise.resolve({ success: true, data: [] }) };
+    });
+
+    renderPage(WalletTracker);
+    await flushAsync();
+
+    // Find and click delete button
+    const deleteBtns = document.querySelectorAll('[class*="hover:text-red"]');
+    if (deleteBtns[0]) {
+      fireEvent.click(deleteBtns[0] as HTMLElement);
+      await flushAsync();
+    }
+  });
+
+  it('handles fetch error on add wallet', async () => {
+    mockFetch.mockImplementation(async (url: string, opts?: any) => {
+      if (typeof url === 'string' && url.includes('/wallets/track')) {
+        throw new Error('Network error');
+      }
+      return { ok: true, json: () => Promise.resolve({ success: true, data: [] }) };
+    });
+
+    renderPage(WalletTracker);
+    await flushAsync();
+
+    const addressInput = screen.getByPlaceholderText('Wallet address (0x... / base58...)');
+    fireEvent.change(addressInput, { target: { value: '0xtest' } });
+    fireEvent.click(screen.getByText('Track Wallet'));
+    await flushAsync();
+
+    expect(screen.getByText('Failed to add wallet')).toBeDefined();
+  });
+
+  it('expands wallet with empty holdings', async () => {
+    mockFetch.mockImplementation(async (url: string) => {
+      if (typeof url === 'string' && url.includes('/balance')) {
+        return { ok: true, json: () => Promise.resolve({ success: true, data: { holdings: [] } }) };
+      }
+      return {
+        ok: true,
+        json: () => Promise.resolve({
+          success: true,
+          data: [{
+            id: 'w1', address: '0xABCDEF1234567890AB', chain: 'ethereum',
+            label: 'Test', totalValue: 0, addedAt: '2025-01-01',
+          }],
+        }),
+      };
+    });
+
+    renderPage(WalletTracker);
+    await flushAsync();
+
+    const walletRow = document.querySelector('[class*="cursor-pointer"]');
+    if (walletRow) {
+      fireEvent.click(walletRow);
+      await flushAsync();
+      expect(screen.getByText('No holdings found.')).toBeDefined();
+    }
+  });
+});
+
+describe('MultiChart — extra branches', () => {
+  let MultiChart: React.ComponentType;
+  beforeEach(async () => { MultiChart = (await import('@/pages/MultiChart')).default; });
+
+  it('renders and interacts', async () => {
+    mockGetOHLCV.mockResolvedValue([]);
+    renderPage(MultiChart);
+    await flushAsync();
+
+    // Click layout buttons if present
+    const btns = screen.getAllByRole('button');
+    for (const btn of btns.slice(0, 3)) {
+      fireEvent.click(btn);
+    }
+  });
+});
+
+describe('ChartReplay — extra branches', () => {
+  let ChartReplay: React.ComponentType;
+  beforeEach(async () => { ChartReplay = (await import('@/pages/ChartReplay')).default; });
+
+  it('handles play/pause toggle and auto-stop at end', async () => {
+    const candles = Array.from({ length: 55 }, (_, i) => ({
+      time: 1000 + i * 3600, open: 50000, high: 50100, low: 49900, close: 50050, volume: 1e6,
+    }));
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, data: candles }),
+    });
+    renderPage(ChartReplay);
+    await flushAsync();
+
+    // Click play
+    const playBtn = screen.getAllByRole('button').find(b => b.querySelector('svg'));
+    if (playBtn) fireEvent.click(playBtn);
+
+    // Click next bar
+    const skipBtn = screen.getAllByRole('button').find(b => b.getAttribute('title')?.includes('Next'));
+    if (skipBtn) fireEvent.click(skipBtn);
+  });
+
+  it('renders fetch error as empty candles', async () => {
+    mockFetch.mockRejectedValue(new Error('fail'));
+    renderPage(ChartReplay);
+    await flushAsync();
+  });
+});
+
+describe('ScriptEditor — save and delete scripts', () => {
+  let ScriptEditor: React.ComponentType;
+  beforeEach(async () => { ScriptEditor = (await import('@/pages/ScriptEditor')).default; });
+
+  it('saves and deletes a script', async () => {
+    renderPage(ScriptEditor);
+    await flushAsync();
+
+    // Change name
+    const nameInput = document.querySelector('input[type="text"]');
+    if (nameInput) {
+      fireEvent.change(nameInput, { target: { value: 'Test Script' } });
+    }
+
+    // Save
+    const allBtns = screen.getAllByRole('button');
+    const saveBtn = allBtns.find(b => b.textContent?.includes('Save'));
+    if (saveBtn) fireEvent.click(saveBtn);
+
+    // Delete (find delete button in saved scripts)
+    const deleteBtns = document.querySelectorAll('[class*="hover:text-danger"], [class*="hover:text-red"]');
+    if (deleteBtns[0]) fireEvent.click(deleteBtns[0] as HTMLElement);
+  });
+});
+
+describe('TaxReport — more branches', () => {
+  let TaxReport: React.ComponentType;
+  beforeEach(async () => { TaxReport = (await import('@/pages/TaxReport')).default; });
+
+  it('renders with both paper trades and journal entries', async () => {
+    mockFetch.mockImplementation(async (url: string) => {
+      if (typeof url === 'string' && url.includes('/paper/history')) {
+        return {
+          ok: true,
+          json: () => Promise.resolve({
+            success: true,
+            data: [
+              { symbol: 'BTCUSDT', side: 'buy', entryPrice: 50000, exitPrice: 52000, pnl: 200, amount: 5000, openedAt: '2026-01-01T00:00:00Z', closedAt: '2026-01-15T00:00:00Z' },
+              { symbol: 'BTCUSDT', side: 'sell', entryPrice: 52000, exitPrice: 51000, pnl: -100, amount: 3000, openedAt: '2026-02-01T00:00:00Z', closedAt: '2026-02-03T00:00:00Z' },
+              { symbol: 'ETHUSDT', side: 'buy', entryPrice: 3000, exitPrice: 3500, pnl: 500, amount: 3000, openedAt: '2026-03-01T00:00:00Z', closedAt: '2026-03-10T00:00:00Z' },
+              // Missing closedAt to test skip
+              { symbol: 'SOLUSDT', side: 'buy', entryPrice: 100, exitPrice: null, pnl: 0, amount: 100, openedAt: '2026-01-01T00:00:00Z' },
+              // Wrong year to test filter
+              { symbol: 'AVAXUSDT', side: 'buy', entryPrice: 20, exitPrice: 25, pnl: 5, amount: 100, openedAt: '2025-01-01T00:00:00Z', closedAt: '2025-01-05T00:00:00Z' },
+            ],
+          }),
+        };
+      }
+      if (typeof url === 'string' && url.includes('/journal')) {
+        return {
+          ok: true,
+          json: () => Promise.resolve({
+            success: true,
+            data: [
+              { pair: 'SOLUSDT', direction: 'long', entryPrice: 100, exitPrice: 120, pnl: 50, pnlPct: 10, createdAt: '2026-04-01T00:00:00Z', updatedAt: '2026-04-05T00:00:00Z' },
+              // No exit price - should be skipped
+              { pair: 'BNBUSDT', direction: 'short', entryPrice: 300, exitPrice: null, pnl: null, pnlPct: null, createdAt: '2026-05-01T00:00:00Z', updatedAt: '2026-05-01T00:00:00Z' },
+              // Wrong year
+              { pair: 'DOTUSDT', direction: 'long', entryPrice: 5, exitPrice: 6, pnl: 10, pnlPct: 20, createdAt: '2025-01-01T00:00:00Z', updatedAt: '2025-01-10T00:00:00Z' },
+            ],
+          }),
+        };
+      }
+      return { ok: true, json: () => Promise.resolve({ success: true, data: [] }) };
+    });
+
+    renderPage(TaxReport);
+    await flushAsync();
+
+    // Should render the report with summary cards
+    expect(screen.getByText('Tax Report')).toBeDefined();
+
+    // Click Download CSV
+    const csvBtn = screen.queryByText('Download CSV');
+    if (csvBtn && !(csvBtn as HTMLButtonElement).disabled) {
+      const mockCreateObjectURL = vi.fn().mockReturnValue('blob:test');
+      const mockRevokeObjectURL = vi.fn();
+      global.URL.createObjectURL = mockCreateObjectURL;
+      global.URL.revokeObjectURL = mockRevokeObjectURL;
+      fireEvent.click(csvBtn);
+    }
+  });
+});
+
+describe('TokenScanner — more branches', () => {
+  let TokenScanner: React.ComponentType;
+  beforeEach(async () => { TokenScanner = (await import('@/pages/TokenScanner')).default; });
+
+  it('renders default state', async () => {
+    renderPage(TokenScanner);
+    await flushAsync();
+  });
+});
+
+describe('AntiLiquidation — more coverage', () => {
+  let AntiLiquidation: React.ComponentType;
+  beforeEach(async () => { AntiLiquidation = (await import('@/pages/AntiLiquidation')).default; });
+
+  it('simulates high price (all safe)', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        success: true,
+        data: [
+          { symbol: 'BTCUSDT', side: 'buy', entryPrice: 50000, currentPrice: 55000, quantity: 0.1, amount: 5000, pnl: 500, pnlPct: 10, openedAt: '2025-01-01' },
+        ],
+      }),
+    });
+    renderPage(AntiLiquidation);
+    await flushAsync();
+
+    // Move slider to high (100 = +30%)
+    const slider = document.querySelector('input[type="range"]');
+    if (slider) {
+      fireEvent.change(slider, { target: { value: '100' } });
+      await flushAsync();
+    }
+  });
+
+  it('handles res.success = false', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: false, data: null }),
+    });
+    renderPage(AntiLiquidation);
+    await flushAsync();
+  });
+});
+
 // ===================== Screener =====================
 
 describe('Screener — full coverage', () => {

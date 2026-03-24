@@ -44,4 +44,8 @@ Premium dark theme:
 - All monetary values stored as NUMERIC in PostgreSQL
 
 ## Documentation
-Full platform specification in `documents/EN/` (3 docx files, 80+ sections).
+All docs in `docs/` directory:
+- `docs/spec/EN/` — Full platform specification (3 docx files, 80+ sections)
+- `docs/spec/UA/` — Ukrainian user guides (8 markdown files)
+- `docs/setup/` — Setup guides (quick start, env vars, database, Docker, API keys, deploy)
+- `docs/testing/` — Manual testing guides (auth, charts, trading, API curl tests)
