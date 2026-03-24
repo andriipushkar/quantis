@@ -248,6 +248,22 @@ describe('getIndicatorsForPair', () => {
     expect(result!.macd).toBeDefined();
   });
 
+  it('supports "obv" filter', async () => {
+    mockRedisGet.mockResolvedValueOnce(JSON.stringify(fakeCachedResult));
+
+    const result = await getIndicatorsForPair(1, '1h', ['obv']);
+    expect(result!.obv).toEqual(fakeCachedResult.obv);
+    expect(result!.sma20).toBeUndefined();
+  });
+
+  it('supports "vwap" filter', async () => {
+    mockRedisGet.mockResolvedValueOnce(JSON.stringify(fakeCachedResult));
+
+    const result = await getIndicatorsForPair(1, '1h', ['vwap']);
+    expect(result!.vwap).toEqual(fakeCachedResult.vwap);
+    expect(result!.sma20).toBeUndefined();
+  });
+
   it('returns null on error', async () => {
     mockRedisGet.mockRejectedValueOnce(new Error('Redis down'));
 
