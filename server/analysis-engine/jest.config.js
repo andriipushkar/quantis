@@ -9,4 +9,8 @@ module.exports = {
   transform: {
     '^.+\\.tsx?$': ['ts-jest', { isolatedModules: true }],
   },
+  collectCoverage: false,
+  coverageDirectory: '<rootDir>/coverage',
+  coverageReporters: ['text', 'text-summary', 'lcov', 'json-summary'],
+  coveragePathIgnorePatterns: ['/node_modules/', '/__tests__/'],
 };

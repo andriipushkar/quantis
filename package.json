@@ -25,7 +25,8 @@
     "docker:build": "docker compose build",
     "test": "npm -w shared run test && npm -w server/analysis-engine run test && npm -w server/data-collector run test && npm -w server/alert-service run test && npm -w client run test",
     "test:integration": "npm -w server/api-gateway run test",
-    "test:e2e": "npx playwright test"
+    "test:e2e": "npx playwright test",
+    "test:coverage": "npm -w shared run test -- --coverage && npm -w server/analysis-engine run test -- --coverage && npm -w server/data-collector run test -- --coverage && npm -w server/alert-service run test -- --coverage && npm -w server/api-gateway run test -- --coverage && npm -w client run test -- --coverage"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

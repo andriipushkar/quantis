@@ -55,8 +55,23 @@ jobs:
       - name: Build shared (dependency)
         run: npm -w shared run build
 
-      - name: Run tests
-        run: npm -w ${{ matrix.workspace }} run test
+      - name: Run tests with coverage
+        run: npm -w ${{ matrix.workspace }} run test -- --coverage
+
+      - name: Check coverage threshold
+        if: always()
+        run: |
+          SUMMARY="${{ matrix.workspace }}/coverage/coverage-summary.json"
+          if [ -f "$SUMMARY" ]; then
+            COVERAGE=$(python3 -c "import sys,json; print(json.load(sys.stdin)['total']['lines']['pct'])" < "$SUMMARY")
+            echo "### ${{ matrix.workspace }} coverage: ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
+            THRESHOLD=80
+            if [ "$(echo "$COVERAGE < $THRESHOLD" | bc -l)" = "1" ]; then
+              echo "::warning::Coverage ${COVERAGE}% is below ${THRESHOLD}% threshold for ${{ matrix.workspace }}"
+            fi
+          else
+            echo "::warning::No coverage report found for ${{ matrix.workspace }}"
+          fi
 
   build:
     name: Build check
