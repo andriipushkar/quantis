@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import { query } from '../config/database.js';
+import { env } from '../config/env.js';
 import logger from '../config/logger.js';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
 
@@ -143,7 +145,6 @@ router.post('/checkout', authenticate, async (req: AuthenticatedRequest, res: Re
     const tierData = PRICING_TIERS.find((t) => t.id === tier);
     const amount = period === 'yearly' ? (tierData?.annualPrice ?? 0) : (tierData?.price ?? 0);
 
-    // Stub: In production, this would call NOWPayments API
     const invoiceId = `inv_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
 
     await query(
@@ -152,14 +153,54 @@ router.post('/checkout', authenticate, async (req: AuthenticatedRequest, res: Re
       [req.user!.id, invoiceId, tier, period, amount]
     );
 
-    res.status(201).json({
-      invoiceId,
-      tier,
-      period,
-      amount,
-      status: 'pending',
-      message: 'Payment invoice created. Integrate with NOWPayments for crypto payment processing.',
-    });
+    const NOWPAYMENTS_API = env.NOWPAYMENTS_SANDBOX
+      ? 'https://api-sandbox.nowpayments.io/v1'
+      : 'https://api.nowpayments.io/v1';
+
+    if (env.NOWPAYMENTS_API_KEY) {
+      const npResponse = await fetch(`${NOWPAYMENTS_API}/invoice`, {
+        method: 'POST',
+        headers: {
+          'x-api-key': env.NOWPAYMENTS_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          price_amount: amount,
+          price_currency: 'usd',
+          order_id: invoiceId,
+          order_description: `Quantis ${tier} - ${period}`,
+          ipn_callback_url: `${env.APP_URL}/api/v1/subscription/webhook`,
+          success_url: `${env.APP_URL}/settings?payment=success`,
+          cancel_url: `${env.APP_URL}/pricing?payment=cancelled`,
+        }),
+      });
+      const npData = (await npResponse.json()) as { invoice_url?: string; id?: string };
+
+      if (!npResponse.ok) {
+        logger.error('NOWPayments invoice creation failed', { status: npResponse.status, npData });
+        res.status(502).json({ error: 'Payment provider error. Please try again later.' });
+        return;
+      }
+
+      res.status(201).json({
+        invoiceId,
+        invoiceUrl: npData.invoice_url,
+        tier,
+        period,
+        amount,
+        status: 'pending',
+      });
+    } else {
+      // Fallback: return without payment URL (dev mode)
+      res.status(201).json({
+        invoiceId,
+        tier,
+        period,
+        amount,
+        status: 'pending',
+        message: 'NOWPayments not configured. Set NOWPAYMENTS_API_KEY to enable crypto payments.',
+      });
+    }
   } catch (err) {
     logger.error('Checkout error', { error: (err as Error).message });
     res.status(500).json({ error: 'Internal server error' });
@@ -169,7 +210,37 @@ router.post('/checkout', authenticate, async (req: AuthenticatedRequest, res: Re
 // POST /webhook - IPN callback handler (no auth - called by payment provider)
 router.post('/webhook', async (req: Request, res: Response) => {
   try {
-    // Stub: In production, verify IPN signature from NOWPayments
+    // Verify IPN signature from NOWPayments
+    if (env.NOWPAYMENTS_IPN_SECRET) {
+      const receivedSig = req.headers['x-nowpayments-sig'] as string | undefined;
+      if (!receivedSig) {
+        logger.warn('Webhook missing IPN signature header');
+        res.status(401).json({ error: 'Missing signature' });
+        return;
+      }
+
+      // NOWPayments requires sorting body keys before hashing
+      const sortedBody = JSON.stringify(
+        Object.keys(req.body)
+          .sort()
+          .reduce<Record<string, unknown>>((sorted, key) => {
+            sorted[key] = req.body[key];
+            return sorted;
+          }, {}),
+      );
+
+      const expectedSig = crypto
+        .createHmac('sha512', env.NOWPAYMENTS_IPN_SECRET)
+        .update(sortedBody)
+        .digest('hex');
+
+      if (receivedSig !== expectedSig) {
+        logger.warn('Webhook IPN signature mismatch');
+        res.status(401).json({ error: 'Invalid signature' });
+        return;
+      }
+    }
+
     const { invoice_id, payment_status } = req.body;
 
     if (!invoice_id || !payment_status) {

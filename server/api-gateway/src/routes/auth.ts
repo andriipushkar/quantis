@@ -12,6 +12,8 @@ import {
   updateProfileSchema,
   changePasswordSchema,
 } from '../validators/auth.js';
+import { sendEmail } from '../utils/mailer.js';
+import { welcomeEmail } from '../utils/email-templates.js';
 
 // Base32 encoding for TOTP secret generation
 const BASE32_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -82,6 +84,12 @@ router.post('/register', async (req: AuthenticatedRequest, res: Response) => {
       'INSERT INTO user_profiles (user_id, referral_code) VALUES ($1, $2)',
       [user.id, referralCode]
     );
+
+    // Send welcome email (non-blocking — don't fail registration if email fails)
+    const displayName = email.split('@')[0];
+    sendEmail(email, 'Welcome to Quantis!', welcomeEmail(displayName)).catch((err) => {
+      logger.error('Failed to send welcome email', { email, error: (err as Error).message });
+    });
 
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Wallet2, Plus, Trash2, ChevronDown, ExternalLink, Copy } from 'lucide-react';
+import { Wallet2, Plus, Trash2, ChevronDown, ExternalLink, Copy, Info } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { useAuthStore } from '@/stores/auth';
 
@@ -170,6 +170,12 @@ const WalletTracker: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Demo Data Banner */}
+      <div className="bg-primary/5 border border-primary/20 rounded-lg px-4 py-2 mb-4 flex items-center gap-2">
+        <Info className="w-4 h-4 text-primary shrink-0" />
+        <span className="text-sm text-muted-foreground">Demo balances — connect real wallet coming soon</span>
+      </div>
+
       {/* Header */}
       <div className="flex items-center gap-3">
         <Wallet2 className="w-6 h-6 text-primary" />

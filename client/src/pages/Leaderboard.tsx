@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Trophy, Medal, TrendingUp, Target } from 'lucide-react';
+import { Trophy, Medal, TrendingUp, Target, Info } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
 interface PaperTrader {
@@ -57,6 +57,12 @@ const Leaderboard: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Demo Data Banner */}
+      <div className="bg-primary/5 border border-primary/20 rounded-lg px-4 py-2 mb-4 flex items-center gap-2">
+        <Info className="w-4 h-4 text-primary shrink-0" />
+        <span className="text-sm text-muted-foreground">Simulated rankings — based on paper trading</span>
+      </div>
+
       <div className="flex items-center gap-3">
         <Trophy className="w-6 h-6 text-primary" />
         <h1 className="text-lg font-bold text-foreground">Leaderboard</h1>

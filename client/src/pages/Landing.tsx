@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
 import {
   LineChart, Signal, Search, BarChart3, Brain, Wallet,
   ArrowRight, Check, Sun, Moon, Globe,
@@ -96,6 +97,16 @@ const Landing: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
+      <Helmet>
+        <title>Quantis — Crypto Analytics Platform</title>
+        <meta name="description" content="200+ indicators, AI signals, real-time screener, on-chain data. One platform for all your crypto trading needs." />
+        <meta property="og:title" content="Quantis — Trade Smarter, Not Harder" />
+        <meta property="og:description" content="Professional crypto analytics with AI-powered signals, 200+ indicators, and real-time market data." />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://quantis.app" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Quantis — Crypto Analytics Platform" />
+      </Helmet>
 
       {/* ═══ HEADER ═══════════════════════════════════════════════ */}
       <header className="fixed top-0 inset-x-0 z-50 backdrop-blur-xl bg-background/70 border-b border-border/40">

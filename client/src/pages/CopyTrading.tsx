@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Users, Star, TrendingUp, TrendingDown, Shield, X, AlertTriangle } from 'lucide-react';
+import { Users, Star, TrendingUp, TrendingDown, Shield, X, AlertTriangle, Info } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { useAuthStore } from '@/stores/auth';
 
@@ -153,6 +153,12 @@ const CopyTrading: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Demo Data Banner */}
+      <div className="bg-primary/5 border border-primary/20 rounded-lg px-4 py-2 mb-4 flex items-center gap-2">
+        <Info className="w-4 h-4 text-primary shrink-0" />
+        <span className="text-sm text-muted-foreground">Demo mode — real copy trading coming soon</span>
+      </div>
+
       {/* Header */}
       <div className="flex items-center gap-3">
         <Users className="w-6 h-6 text-primary" />
