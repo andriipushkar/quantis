@@ -52,6 +52,44 @@ vi.mock('@/services/api', () => {
     login: mockFn,
     register: mockFn,
     askCopilot: vi.fn().mockResolvedValue({ response: 'test' }),
+    getDeFiOverview: vi.fn().mockResolvedValue({ protocols: [], totalTvl: 0, avgApy: 0, protocolCount: 0 }),
+    getExchangeHealth: vi.fn().mockResolvedValue([]),
+    getFundingRates: vi.fn().mockResolvedValue([]),
+    getMarketBreadth: vi.fn().mockResolvedValue({ breadthScore: 50, components: {} }),
+    getMarketProfile: vi.fn().mockResolvedValue({ poc: 0, vaHigh: 0, vaLow: 0 }),
+    getNarratives: vi.fn().mockResolvedValue([]),
+    getOpenInterest: vi.fn().mockResolvedValue([]),
+    getCorrelation: vi.fn().mockResolvedValue({ matrix: [], symbols: [] }),
+    getSeasonality: vi.fn().mockResolvedValue({ hourly: [], daily: [] }),
+    getLiquidations: vi.fn().mockResolvedValue({ above: [], below: [] }),
+    getOrderFlow: vi.fn().mockResolvedValue([]),
+    getWhaleTransactions: vi.fn().mockResolvedValue([]),
+    getNews: vi.fn().mockResolvedValue({ articles: [], total: 0 }),
+    getLeaderboard: vi.fn().mockResolvedValue([]),
+    getCopyTraders: vi.fn().mockResolvedValue([]),
+    getJournalEntries: vi.fn().mockResolvedValue([]),
+    createJournalEntry: mockFn,
+    deleteJournalEntry: mockFn,
+    updateJournalEntry: mockFn,
+    getSocialFeed: vi.fn().mockResolvedValue({ posts: [] }),
+    createPost: mockFn,
+    getGamificationProfile: vi.fn().mockResolvedValue({ xp: 0, level: 1, streak: 0 }),
+    getPaperPortfolio: vi.fn().mockResolvedValue({ balance: 100000, positions: [] }),
+    placePaperOrder: mockFn,
+    closePaperPosition: mockFn,
+    getTrackedWallets: vi.fn().mockResolvedValue([]),
+    trackWallet: mockFn,
+    removeTrackedWallet: mockFn,
+    getWalletBalance: vi.fn().mockResolvedValue({ holdings: [], totalValue: 0 }),
+    getInfluencers: vi.fn().mockResolvedValue([]),
+    getInfluencerConsensus: vi.fn().mockResolvedValue([]),
+    getTokenomics: vi.fn().mockResolvedValue({}),
+    compareTokenomics: vi.fn().mockResolvedValue([]),
+    scanToken: vi.fn().mockResolvedValue({ score: 50, flags: [] }),
+    getMarketplaceStrategies: vi.fn().mockResolvedValue([]),
+    getTaxReport: vi.fn().mockResolvedValue({ trades: [], summary: {} }),
+    getProfile: vi.fn().mockResolvedValue({ display_name: 'Test', xp: 0 }),
+    getReferralStats: vi.fn().mockResolvedValue({ referrals: 0, earned: 0, link: '' }),
   };
 });
 
@@ -60,6 +98,12 @@ vi.mock('@/services/socket', () => ({
   getSocket: vi.fn(() => ({ on: vi.fn(), off: vi.fn(), emit: vi.fn(), connected: false })),
   disconnectSocket: vi.fn(),
   onConnectionStatus: vi.fn(),
+  subscribeOHLCV: vi.fn(),
+  unsubscribeOHLCV: vi.fn(),
+  subscribeTicker: vi.fn(),
+  unsubscribeTicker: vi.fn(),
+  subscribeSignals: vi.fn(),
+  unsubscribeSignals: vi.fn(),
 }));
 
 vi.mock('@/hooks/useWebSocket', () => ({ useWebSocket: vi.fn() }));
@@ -85,35 +129,27 @@ vi.mock('@/stores/auth', () => {
   };
 });
 
-vi.mock('@/stores/market', () => ({
-  useMarketStore: vi.fn((sel) =>
-    typeof sel === 'function'
-      ? sel({
-          tickers: new Map(),
-          pairs: [],
-          updateTicker: vi.fn(),
-          updateTickers: vi.fn(),
-        })
-      : undefined,
-  ),
-  TIMEFRAMES: ['1m', '5m', '15m', '1h', '4h', '1d', '1w'],
-}));
+vi.mock('@/stores/market', () => {
+  const state = { tickers: new Map(), pairs: [], updateTicker: vi.fn(), updateTickers: vi.fn(), selectedPair: 'BTCUSDT', setSelectedPair: vi.fn(), selectedTimeframe: '1h', setSelectedTimeframe: vi.fn() };
+  return {
+    useMarketStore: vi.fn((sel?: any) => typeof sel === 'function' ? sel(state) : state),
+    TIMEFRAMES: ['1m', '5m', '15m', '1h', '4h', '1d', '1w'],
+  };
+});
 
-vi.mock('@/stores/toast', () => ({
-  useToastStore: vi.fn((sel) =>
-    typeof sel === 'function'
-      ? sel({ toasts: [], addToast: vi.fn(), removeToast: vi.fn() })
-      : undefined,
-  ),
-}));
+vi.mock('@/stores/toast', () => {
+  const state = { toasts: [], addToast: vi.fn(), removeToast: vi.fn() };
+  return {
+    useToastStore: vi.fn((sel?: any) => typeof sel === 'function' ? sel(state) : state),
+  };
+});
 
-vi.mock('@/stores/notifications', () => ({
-  useNotificationStore: vi.fn((sel) =>
-    typeof sel === 'function'
-      ? sel({ notifications: [], unreadCount: 0, addNotification: vi.fn(), markAllRead: vi.fn() })
-      : undefined,
-  ),
-}));
+vi.mock('@/stores/notifications', () => {
+  const state = { notifications: [], unreadCount: 0, addNotification: vi.fn(), markAllRead: vi.fn() };
+  return {
+    useNotificationStore: vi.fn((sel?: any) => typeof sel === 'function' ? sel(state) : state),
+  };
+});
 
 vi.mock('@/stores/theme', () => ({
   useThemeStore: vi.fn((sel) =>
@@ -142,6 +178,36 @@ vi.mock('@/components/auth/GoogleSignInButton', () => ({
   GoogleSignInButton: () => <div data-testid="google-signin">Google Sign In</div>,
 }));
 
+// Mock chart components that use canvas/lightweight-charts
+vi.mock('@/components/charts/TradingChart', () => ({
+  TradingChart: React.forwardRef((_: any, ref: any) => <div ref={ref} data-testid="trading-chart">Chart</div>),
+}));
+vi.mock('@/components/charts/RSIChart', () => ({
+  RSIChart: () => <div data-testid="rsi-chart">RSI</div>,
+}));
+vi.mock('@/components/charts/ConfluenceHistory', () => ({
+  ConfluenceHistory: () => <div>Confluence</div>,
+}));
+vi.mock('@/components/charts/ConfluenceGauge', () => ({
+  ConfluenceGauge: () => <div>Gauge</div>,
+}));
+vi.mock('@/components/charts/DrawingToolbar', () => ({
+  DrawingToolbar: () => <div>DrawingToolbar</div>,
+}));
+vi.mock('@/components/dashboard/WatchlistStrip', () => ({
+  WatchlistStrip: () => <div>Watchlist</div>,
+}));
+vi.mock('@/components/dashboard/ConfluenceGauge', () => ({
+  ConfluenceGauge: () => <div>Gauge</div>,
+}));
+vi.mock('@/components/dashboard/SignalCard', () => ({
+  SignalCard: () => <div>Signal</div>,
+}));
+vi.mock('@/components/common/ConnectionStatus', () => ({
+  ConnectionStatus: () => <div>Connected</div>,
+  default: () => <div>Connected</div>,
+}));
+
 // Mock canvas getContext for pages using canvas (Dashboard, Portfolio, etc.)
 HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
   clearRect: vi.fn(),
@@ -168,6 +234,9 @@ global.fetch = vi.fn().mockResolvedValue({
 }) as any;
 
 // Mock ResizeObserver
+// Mock scrollIntoView (not available in jsdom)
+Element.prototype.scrollIntoView = vi.fn();
+
 global.ResizeObserver = vi.fn().mockImplementation(() => ({
   observe: vi.fn(),
   unobserve: vi.fn(),
@@ -269,20 +338,11 @@ describe('Page smoke tests', () => {
   it.each(pages)('%s renders without crash', async (_name, loader) => {
     const mod = await loader();
     const Page = mod.default;
-    // Some pages may throw during render due to missing deep dependencies;
-    // we wrap in a try/catch and only fail if the import itself fails
-    let didRender = false;
-    try {
-      render(
-        <MemoryRouter>
-          <Page />
-        </MemoryRouter>,
-      );
-      didRender = true;
-    } catch {
-      // Page threw during render — still counts as importable and constructable
-      didRender = true;
-    }
-    expect(didRender).toBe(true);
+    const { container } = render(
+      <MemoryRouter>
+        <Page />
+      </MemoryRouter>,
+    );
+    expect(container).toBeDefined();
   });
 });
