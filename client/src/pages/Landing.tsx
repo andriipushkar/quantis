@@ -146,7 +146,7 @@ const Landing: React.FC = () => {
           </div>
 
           <h1 className="text-4xl sm:text-5xl md:text-7xl font-extrabold tracking-tight leading-[1.08]">
-            {t('landing.heroTitle1')}<br />
+            {t('landing.heroTitle1')}{' '}
             <span className="bg-gold-bronze-gradient bg-clip-text text-transparent">{t('landing.heroTitle2')}</span>
           </h1>
 
@@ -200,12 +200,12 @@ const Landing: React.FC = () => {
                       <div className="flex gap-1">{['EMA','BB','RSI'].map(i=><span key={i} className="text-[8px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">{i}</span>)}</div>
                     </div>
                     {/* Candlesticks */}
-                    <div className="h-28 sm:h-44 flex items-end gap-[1.5px] sm:gap-[2px]">
+                    <div className="h-32 sm:h-48 flex items-end gap-[1.5px] sm:gap-[2px]">
                       {Array.from({length:80},(_,i)=>{
-                        const trend = Math.sin(i*0.12)*20 + (i/80)*40;
-                        const bodyH = 3 + Math.random()*8;
-                        const wickH = bodyH + 2 + Math.random()*4;
-                        const bottom = 15 + trend + Math.random()*10;
+                        const trend = Math.sin(i*0.12)*15 + (i/80)*30;
+                        const bodyH = 4 + Math.random()*12;
+                        const wickH = bodyH + 3 + Math.random()*6;
+                        const bottom = 5 + trend + Math.random()*8;
                         const green = Math.sin(i*0.15+0.5)>-0.2;
                         return (
                           <div key={i} className="flex-1 flex flex-col items-center justify-end min-w-[1px]" style={{height:'100%'}}>
@@ -267,9 +267,29 @@ const Landing: React.FC = () => {
       {/* ═══ EXCHANGES ════════════════════════════════════════════ */}
       <section className="py-8 px-6 border-y border-border/30 bg-card/20">
         <div className="max-w-4xl mx-auto text-center">
-          <p className="text-xs text-muted-foreground uppercase tracking-widest mb-4">{t('landing.exchanges')}</p>
-          <div className="flex items-center justify-center gap-10 sm:gap-16 opacity-50">
-            {['Binance','Bybit','OKX'].map(e=><span key={e} className="text-foreground font-bold text-lg sm:text-xl tracking-wider">{e}</span>)}
+          <p className="text-xs text-muted-foreground uppercase tracking-widest mb-5">{t('landing.exchanges')}</p>
+          <div className="flex items-center justify-center gap-8 sm:gap-14">
+            {/* Binance */}
+            <div className="flex items-center gap-2 opacity-70 hover:opacity-100 transition-opacity">
+              <div className="w-8 h-8 rounded-lg bg-[#F3BA2F]/15 flex items-center justify-center">
+                <span className="text-[#F3BA2F] font-black text-sm">B</span>
+              </div>
+              <span className="text-foreground font-bold text-base sm:text-lg hidden sm:inline">Binance</span>
+            </div>
+            {/* Bybit */}
+            <div className="flex items-center gap-2 opacity-70 hover:opacity-100 transition-opacity">
+              <div className="w-8 h-8 rounded-lg bg-[#F7A600]/15 flex items-center justify-center">
+                <span className="text-[#F7A600] font-black text-sm">BY</span>
+              </div>
+              <span className="text-foreground font-bold text-base sm:text-lg hidden sm:inline">Bybit</span>
+            </div>
+            {/* OKX */}
+            <div className="flex items-center gap-2 opacity-70 hover:opacity-100 transition-opacity">
+              <div className="w-8 h-8 rounded-lg bg-foreground/10 flex items-center justify-center">
+                <span className="text-foreground font-black text-sm">OK</span>
+              </div>
+              <span className="text-foreground font-bold text-base sm:text-lg hidden sm:inline">OKX</span>
+            </div>
           </div>
         </div>
       </section>
@@ -356,9 +376,9 @@ const Landing: React.FC = () => {
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed mb-4">Professional crypto analytics for every trader.</p>
               <div className="flex items-center gap-4">
-                <a href="#" className="text-muted-foreground hover:text-foreground transition-colors"><Twitter className="w-5 h-5"/></a>
-                <a href="#" className="text-muted-foreground hover:text-foreground transition-colors"><MessageCircle className="w-5 h-5"/></a>
-                <a href="#" className="text-muted-foreground hover:text-foreground transition-colors"><Send className="w-5 h-5"/></a>
+                <a href="#" className="text-muted-foreground hover:text-primary transition-colors"><Twitter className="w-6 h-6"/></a>
+                <a href="#" className="text-muted-foreground hover:text-primary transition-colors"><MessageCircle className="w-6 h-6"/></a>
+                <a href="#" className="text-muted-foreground hover:text-primary transition-colors"><Send className="w-6 h-6"/></a>
               </div>
             </div>
             <div>
