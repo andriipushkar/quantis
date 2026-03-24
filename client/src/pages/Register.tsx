@@ -10,6 +10,7 @@ import { Button } from '@/components/common/Button';
 import { useAuthStore } from '@/stores/auth';
 import { useThemeStore } from '@/stores/theme';
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
+import { Sun, Moon, Globe } from 'lucide-react';
 
 const OnboardingWizard = lazy(() => import('@/components/common/OnboardingWizard'));
 
@@ -76,10 +77,11 @@ const Register: React.FC = () => {
       {/* Top-right controls */}
       <div className="absolute top-4 right-4 flex items-center gap-2">
         <button onClick={toggleTheme} className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all" title="Toggle theme">
-          {theme === 'dark' ? <span className="text-sm">☀️</span> : <span className="text-sm">🌙</span>}
+          {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </button>
         <button onClick={toggleLang} className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all text-xs font-medium" title="Switch language">
-          🌐 {{ en: 'EN', uk: 'UA', de: 'DE', es: 'ES' }[i18n.language] || 'EN'}
+          <Globe className="w-4 h-4" />
+          <span>{({en:'EN',uk:'UA',de:'DE',es:'ES'} as Record<string,string>)[i18n.language] || 'EN'}</span>
         </button>
       </div>
       <div className="w-full max-w-sm">

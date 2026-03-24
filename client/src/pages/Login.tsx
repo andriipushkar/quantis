@@ -10,6 +10,7 @@ import { Button } from '@/components/common/Button';
 import { useAuthStore } from '@/stores/auth';
 import { useThemeStore } from '@/stores/theme';
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
+import { Sun, Moon, Globe } from 'lucide-react';
 
 const loginSchema = z.object({
   email: z.string().min(1, 'emailRequired').email('invalidEmail'),
@@ -47,11 +48,11 @@ const Login: React.FC = () => {
       {/* Top-right controls */}
       <div className="absolute top-4 right-4 flex items-center gap-2">
         <button onClick={toggleTheme} className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all" title="Toggle theme">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">{theme === 'dark' ? <circle cx="12" cy="12" r="5" strokeWidth={2}/> : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />}</svg>
+          {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </button>
         <button onClick={() => { const langs = ['en','uk','de','es']; const idx = langs.indexOf(i18n.language); i18n.changeLanguage(langs[(idx+1)%langs.length]); }} className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all text-xs font-medium">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" strokeWidth={2}/><path strokeWidth={2} d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
-          <span>{{ en: 'EN', uk: 'UA', de: 'DE', es: 'ES' }[i18n.language] || 'EN'}</span>
+          <Globe className="w-4 h-4" />
+          <span>{({en:'EN',uk:'UA',de:'DE',es:'ES'} as Record<string,string>)[i18n.language] || 'EN'}</span>
         </button>
       </div>
       <div className="w-full max-w-sm">
