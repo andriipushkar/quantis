@@ -143,7 +143,7 @@ router.get('/profile', authenticate, async (req: AuthenticatedRequest, res: Resp
     const userId = req.user!.id;
     const userData = await getOrCreateUser(userId);
     const actionCounts = userData.action_counts || {};
-    let totalXP = userData.total_xp;
+    const totalXP = userData.total_xp;
     let streakDays = userData.streak_days;
 
     // Update streak on profile view

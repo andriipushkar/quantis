@@ -6,7 +6,7 @@
  * The route now uses PostgreSQL for persistence via query().
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 // ---------------------------------------------------------------------------
 // Mocks — must be declared BEFORE the module under test is imported

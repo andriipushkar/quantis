@@ -4,7 +4,7 @@
  * Tests authenticate() and requireTier() directly with mock req/res objects.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 // ---------------------------------------------------------------------------
 // 1. Mocks

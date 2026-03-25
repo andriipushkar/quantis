@@ -5,7 +5,7 @@
  * with mocked database and logger.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -81,7 +81,7 @@ describe('Wallet Tracker — validation', () => {
   });
 
   test('missing address → invalid', () => {
-    const body = { chain: 'ethereum' };
+    const body: Record<string, string> = { chain: 'ethereum' };
     expect(!body.address || !body.chain).toBe(true);
   });
 

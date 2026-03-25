@@ -13,7 +13,7 @@ const pool = new Pool({
   ssl: env.DB_SSL ? { rejectUnauthorized: false } : undefined,
 });
 
-pool.on('error', (err) => {
+pool.on('error', (err: Error) => {
   logger.error('Unexpected database pool error', { error: err.message });
 });
 

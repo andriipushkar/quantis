@@ -338,7 +338,7 @@ router.get('/history', authenticate, async (req: AuthenticatedRequest, res: Resp
       [userId],
     );
 
-    const history = result.rows.map((t) => ({
+    const history = result.rows.map((t: { symbol: string; side: string; entry_price: string; exit_price: string; quantity: string; pnl: string; opened_at: Date; closed_at: Date }) => ({
       symbol: t.symbol,
       side: toApiSide(t.side),
       entryPrice: Number(t.entry_price),

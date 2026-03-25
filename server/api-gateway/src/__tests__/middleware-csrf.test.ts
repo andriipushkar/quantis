@@ -5,7 +5,7 @@
  * empty body with auth header passes, missing headers → 403.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 import { Request, Response, NextFunction } from 'express';
 import { csrfProtection } from '../middleware/csrf.js';

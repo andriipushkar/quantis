@@ -144,7 +144,7 @@ vi.mock('@/services/socket', () => ({
 vi.mock('@/hooks/useWebSocket', () => ({ useWebSocket: vi.fn() }));
 
 // Store mocks with controllable state
-let authState: any = {
+const authState: any = {
   user: { id: 'u1', email: 'test@test.com', tier: 'pro', display_name: 'Test', timezone: 'UTC', language: 'en', role: 'admin', is_admin: true },
   isAuthenticated: true,
   isLoading: false,
@@ -164,7 +164,7 @@ vi.mock('@/stores/auth', () => ({
   ),
 }));
 
-let marketState: any = {
+const marketState: any = {
   tickers: new Map(),
   pairs: [],
   updateTicker: vi.fn(),

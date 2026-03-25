@@ -5,7 +5,7 @@
  * the database, logger, and env. No real infrastructure needed.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 // ---------------------------------------------------------------------------
 // Mocks

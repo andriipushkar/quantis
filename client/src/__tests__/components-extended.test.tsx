@@ -40,7 +40,7 @@ vi.mock('lucide-react', () => ({
   ),
 }));
 
-let mockOnConnectionStatus = vi.fn();
+const mockOnConnectionStatus = vi.fn();
 vi.mock('@/services/socket', () => ({
   onConnectionStatus: (...args: unknown[]) => mockOnConnectionStatus(...args),
 }));

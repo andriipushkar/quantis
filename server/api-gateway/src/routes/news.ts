@@ -167,7 +167,7 @@ async function fetchNews(): Promise<NewsItem[]> {
 
     if (!response.ok) throw new Error(`CoinGecko returned ${response.status}`);
 
-    const json = await response.json();
+    const json = await response.json() as { status_updates?: Record<string, unknown>[] };
     const updates = json.status_updates ?? [];
 
     if (updates.length === 0) throw new Error('No updates returned');

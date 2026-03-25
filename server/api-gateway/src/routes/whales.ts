@@ -67,13 +67,13 @@ router.get('/', async (_req: Request, res: Response) => {
       const candles = candlesResult.rows;
       if (candles.length < 5) continue;
 
-      const volumes = candles.map((c) => parseFloat(c.volume));
+      const volumes = candles.map((c: { volume: string }) => parseFloat(c.volume));
       const latestVolume = volumes[0];
 
       // Average volume of candles 1..19 (excluding latest)
       const historicalVolumes = volumes.slice(1);
       const avgVolume =
-        historicalVolumes.reduce((a, b) => a + b, 0) / historicalVolumes.length;
+        historicalVolumes.reduce((a: number, b: number) => a + b, 0) / historicalVolumes.length;
 
       // Detect whale activity: current volume > 3x average
       if (avgVolume > 0 && latestVolume > avgVolume * 3) {

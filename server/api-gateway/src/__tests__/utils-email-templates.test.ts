@@ -5,7 +5,7 @@
  * containing the expected dynamic content.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 // ---------------------------------------------------------------------------
 // 1. Mocks

@@ -4,7 +4,7 @@
  * Tests token data lookup, comparison, and caching.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 // ---------------------------------------------------------------------------
 // Mocks

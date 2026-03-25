@@ -4,7 +4,7 @@
  * Tests tier-based rate limiting with mocked Redis.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 // ---------------------------------------------------------------------------
 // 1. Mocks

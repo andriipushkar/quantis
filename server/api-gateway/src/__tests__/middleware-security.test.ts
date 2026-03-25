@@ -4,7 +4,7 @@
  * Tests sanitizeResponse, validateContentType, preventParamPollution.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 import { Request, Response, NextFunction } from 'express';
 import { sanitizeResponse, validateContentType, preventParamPollution } from '../middleware/security.js';

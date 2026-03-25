@@ -111,9 +111,9 @@ describe('OnboardingWizard coverage', () => {
 
   it('renders step 1 and selects experience level', async () => {
     const mod = await import('@/components/common/OnboardingWizard');
-    const Wizard = mod.default || mod.OnboardingWizard;
+    const Wizard = mod.default;
     if (!Wizard) return;
-    const { container } = render(<MemoryRouter><Wizard /></MemoryRouter>);
+    const { container } = render(<MemoryRouter><Wizard onComplete={() => {}} /></MemoryRouter>);
     // Click on experience level buttons
     const buttons = container.querySelectorAll('button');
     if (buttons.length > 0) fireEvent.click(buttons[0]);
@@ -121,9 +121,9 @@ describe('OnboardingWizard coverage', () => {
 
   it('navigates to next step', async () => {
     const mod = await import('@/components/common/OnboardingWizard');
-    const Wizard = mod.default || mod.OnboardingWizard;
+    const Wizard = mod.default;
     if (!Wizard) return;
-    const { container } = render(<MemoryRouter><Wizard /></MemoryRouter>);
+    const { container } = render(<MemoryRouter><Wizard onComplete={() => {}} /></MemoryRouter>);
     const buttons = Array.from(container.querySelectorAll('button'));
     // Select experience first
     if (buttons.length > 1) fireEvent.click(buttons[0]);
@@ -179,7 +179,7 @@ describe('Layout coverage', () => {
 describe('Header coverage', () => {
   it('renders and toggles theme', async () => {
     const mod = await import('@/components/layout/Header');
-    const Header = mod.Header || mod.default;
+    const Header = mod.Header;
     if (!Header) return;
     const { container } = render(<MemoryRouter><Header /></MemoryRouter>);
     const buttons = container.querySelectorAll('button');

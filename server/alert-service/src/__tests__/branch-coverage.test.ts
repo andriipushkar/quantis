@@ -12,7 +12,7 @@
  *     condition mismatch branches (pair, strategy, direction, min_strength, min_confidence)
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 // ── Mocks ───────────────────────────────────────────────────────────
 

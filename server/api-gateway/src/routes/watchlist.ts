@@ -22,7 +22,7 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
     );
 
     const items = await Promise.all(
-      result.rows.map(async (row) => {
+      result.rows.map(async (row: { symbol: string; [key: string]: unknown }) => {
         const exchanges = ['binance', 'bybit', 'okx'];
         let ticker = null;
         for (const ex of exchanges) {

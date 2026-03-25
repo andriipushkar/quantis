@@ -55,7 +55,7 @@ router.get('/ohlcv/:symbol', async (req: Request, res: Response) => {
       params
     );
 
-    const candles = result.rows.map((r) => ({
+    const candles = result.rows.map((r: { time: string; open: string; high: string; low: string; close: string; volume: string }) => ({
       time: Math.floor(new Date(r.time).getTime() / 1000),
       open: parseFloat(r.open),
       high: parseFloat(r.high),

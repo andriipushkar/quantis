@@ -11,7 +11,7 @@ const mockApiRegister = vi.fn();
 const mockApiGoogleLogin = vi.fn();
 const mockApiLogout = vi.fn();
 const mockGetProfile = vi.fn();
-const mockGetToken = vi.fn(() => 'test-token');
+const mockGetToken = vi.fn((): string | null => 'test-token');
 const mockClearToken = vi.fn();
 
 vi.mock('@/services/api', () => ({

@@ -7,7 +7,7 @@
  *   - middleware/socketRateLimiter.ts (canSubscribe, releaseSubscriptions)
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 // ── Mocks — must come before imports ────────────────────────────────
 

@@ -41,7 +41,7 @@ function generateAccessToken(user: { id: string; email: string; tier: string }):
   return jwt.sign(
     { id: user.id, email: user.email, tier: user.tier },
     env.JWT_ACCESS_SECRET,
-    { expiresIn: env.JWT_ACCESS_EXPIRY },
+    { expiresIn: env.JWT_ACCESS_EXPIRY as jwt.SignOptions['expiresIn'] },
   );
 }
 
@@ -49,7 +49,7 @@ function generateRefreshToken(user: { id: string; email: string; tier: string })
   return jwt.sign(
     { id: user.id, email: user.email, tier: user.tier },
     env.JWT_REFRESH_SECRET,
-    { expiresIn: env.JWT_REFRESH_EXPIRY },
+    { expiresIn: env.JWT_REFRESH_EXPIRY as jwt.SignOptions['expiresIn'] },
   );
 }
 

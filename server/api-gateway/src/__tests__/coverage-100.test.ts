@@ -8,7 +8,7 @@
  * 4. ticker-cache.ts line 40 (stale memory cache branch)
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 // ---------------------------------------------------------------------------
 // 1. Mocks — declared BEFORE imports

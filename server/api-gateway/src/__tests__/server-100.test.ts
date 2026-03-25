@@ -11,7 +11,7 @@
  *   - config/database.ts — pool 'error' event handler
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 // ---------------------------------------------------------------------------
 // Mocks — before imports
@@ -1077,10 +1077,11 @@ describe('Config: env.ts — validation logic', () => {
   });
 
   test('optionalBool returns correct values', () => {
-    expect('true' === 'true' || 'true' === '1').toBe(true);
-    expect('false' === 'true' || 'false' === '1').toBe(false);
-    expect('1' === 'true' || '1' === '1').toBe(true);
-    expect('0' === 'true' || '0' === '1').toBe(false);
+    const check = (v: string) => v === 'true' || v === '1';
+    expect(check('true')).toBe(true);
+    expect(check('false')).toBe(false);
+    expect(check('1')).toBe(true);
+    expect(check('0')).toBe(false);
   });
 
   test('production JWT placeholder check logic', () => {
@@ -1264,7 +1265,7 @@ describe('Config: env.ts — real validation via isolateModules', () => {
 
 describe('Config: redis.ts — real module via isolateModules', () => {
   test('redis module creates client with event handlers', () => {
-    let capturedHandlers: Record<string, Function> = {};
+    const capturedHandlers: Record<string, Function> = {};
     let capturedRetryStrategy: Function | undefined;
 
     jest.isolateModules(() => {

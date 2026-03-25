@@ -2,12 +2,12 @@ import {
   bullishengulfingpattern,
   bearishengulfingpattern,
   doji,
-  hammer,
+  hammerpattern,
   hangingman,
   shootingstar,
   morningstar,
   eveningstar,
-  invertedhammer,
+  bullishinvertedhammerstick,
 } from 'technicalindicators';
 
 export interface CandleInput {
@@ -40,14 +40,14 @@ const PATTERNS: PatternDefinition[] = [
     type: 'bullish',
     confidence: 0.7,
     lookback: 1,
-    detect: (input) => hammer(input),
+    detect: (input) => hammerpattern(input),
   },
   {
     name: 'InvertedHammer',
     type: 'bullish',
     confidence: 0.65,
     lookback: 1,
-    detect: (input) => invertedhammer(input),
+    detect: (input) => bullishinvertedhammerstick(input),
   },
   {
     name: 'BullishEngulfing',

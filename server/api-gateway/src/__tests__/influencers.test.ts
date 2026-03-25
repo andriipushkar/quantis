@@ -5,7 +5,7 @@
  * with mocked Redis.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 // ---------------------------------------------------------------------------
 // Mocks

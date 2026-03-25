@@ -281,7 +281,7 @@ async function renderAndWait(Component: React.ComponentType) {
   await act(async () => {
     result = safeRender(Component);
   });
-  return result;
+  return result as ReturnType<typeof render> | null;
 }
 
 // ---------------------------------------------------------------------------

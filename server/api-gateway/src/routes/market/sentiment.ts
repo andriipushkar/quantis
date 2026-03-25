@@ -60,7 +60,7 @@ router.get('/fear-greed', async (_req: Request, res: Response) => {
         [pair.id]
       );
 
-      const closes = candlesResult.rows.map((r) => parseFloat(r.close)).reverse();
+      const closes = candlesResult.rows.map((r: { close: string }) => parseFloat(r.close)).reverse();
       if (closes.length >= 15) {
         let gains = 0;
         let losses = 0;

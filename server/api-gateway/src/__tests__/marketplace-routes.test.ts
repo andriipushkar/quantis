@@ -4,7 +4,7 @@
  * Tests strategy listing, detail, follow/unfollow, rating, and publishing.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 // ---------------------------------------------------------------------------
 // Mocks

@@ -5,7 +5,7 @@
  * by mocking pg, ioredis, winston, and dotenv.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 // ---------------------------------------------------------------------------
 // 1. Mocks — must be declared BEFORE the module under test is imported

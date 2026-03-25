@@ -5,7 +5,7 @@
  * Redis, logger, env, and bcrypt so we never touch real infrastructure.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 // ---------------------------------------------------------------------------
 // 1. Mocks — must be declared BEFORE the module under test is imported
@@ -146,7 +146,7 @@ function findHandler(method: string, path: string): Function[] {
  * Calls next() automatically when a handler invokes it.
  */
 async function runHandlers(handlers: Function[], req: any, res: MockResponse) {
-  let idx = 0;
+  const idx = 0;
   const next = (err?: any) => {
     if (err) throw err;
   };

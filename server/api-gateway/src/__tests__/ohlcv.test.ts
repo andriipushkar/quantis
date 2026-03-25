@@ -2,7 +2,7 @@
  * OHLCV + Renko routes — unit tests
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 const mockQuery = jest.fn();
 jest.mock('../config/database.js', () => ({ __esModule: true, query: (...args: any[]) => mockQuery(...args), default: {} }));

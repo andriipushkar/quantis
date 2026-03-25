@@ -4,7 +4,7 @@
  * Tests template validation, admin check, and SMTP config verification.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 // ---------------------------------------------------------------------------
 // Mocks

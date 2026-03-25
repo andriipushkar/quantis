@@ -270,8 +270,8 @@ router.get('/regime', async (_req: Request, res: Response) => {
     // BB Width for backward compat
     const bbP = Math.min(20, closes.length);
     const bbS = closes.slice(-bbP);
-    const bbM = bbS.reduce((a, b) => a + b, 0) / bbP;
-    const bbStd = Math.sqrt(bbS.reduce((a, v) => a + (v - bbM) ** 2, 0) / bbP);
+    const bbM = bbS.reduce((a: number, b: number) => a + b, 0) / bbP;
+    const bbStd = Math.sqrt(bbS.reduce((a: number, v: number) => a + (v - bbM) ** 2, 0) / bbP);
     const bbWidth = bbM > 0 ? (bbStd * 4) / bbM * 100 : 0;
 
     // ATR for backward compat
@@ -443,9 +443,9 @@ router.get('/confluence/:symbol', async (req: Request, res: Response) => {
       return;
     }
 
-    const closes = candles.map((c) => c.close);
-    const highs = candles.map((c) => c.high);
-    const lows = candles.map((c) => c.low);
+    const closes = candles.map((c: { close: number; high: number; low: number; volume: number; time: Date }) => c.close);
+    const highs = candles.map((c: { close: number; high: number; low: number; volume: number; time: Date }) => c.high);
+    const lows = candles.map((c: { close: number; high: number; low: number; volume: number; time: Date }) => c.low);
     const currentPrice = closes[closes.length - 1];
 
     // --- Collect price zones with sources ---
@@ -501,14 +501,14 @@ router.get('/confluence/:symbol', async (req: Request, res: Response) => {
     // 4. SMA50
     const sma50Period = Math.min(50, closes.length);
     const sma50Slice = closes.slice(closes.length - sma50Period);
-    const sma50 = sma50Slice.reduce((a, b) => a + b, 0) / sma50Period;
+    const sma50 = sma50Slice.reduce((a: number, b: number) => a + b, 0) / sma50Period;
     addZone(sma50, 'SMA 50');
 
     // 5. Bollinger Bands (20, 2)
     const bbPeriod = Math.min(20, closes.length);
     const bbSlice = closes.slice(closes.length - bbPeriod);
-    const bbMean = bbSlice.reduce((a, b) => a + b, 0) / bbPeriod;
-    const bbStd = Math.sqrt(bbSlice.reduce((a, v) => a + (v - bbMean) ** 2, 0) / bbPeriod);
+    const bbMean = bbSlice.reduce((a: number, b: number) => a + b, 0) / bbPeriod;
+    const bbStd = Math.sqrt(bbSlice.reduce((a: number, v: number) => a + (v - bbMean) ** 2, 0) / bbPeriod);
     const bbUpper = bbMean + 2 * bbStd;
     const bbLower = bbMean - 2 * bbStd;
     addZone(bbUpper, 'Bollinger Upper Band');
@@ -758,8 +758,8 @@ router.get('/profile/:symbol', async (req: Request, res: Response) => {
     }
 
     // Determine overall high and low
-    const overallHigh = Math.max(...candles.map((c) => c.high));
-    const overallLow = Math.min(...candles.map((c) => c.low));
+    const overallHigh = Math.max(...candles.map((c: { high: number; low: number; close: number; volume: number }) => c.high));
+    const overallLow = Math.min(...candles.map((c: { high: number; low: number; close: number; volume: number }) => c.low));
     const range = overallHigh - overallLow;
 
     if (range === 0) {

@@ -177,8 +177,11 @@ global.fetch = mockFetch;
 // ---------------------------------------------------------------------------
 // Access mock state objects via module imports
 // ---------------------------------------------------------------------------
+// @ts-expect-error — test-only mock state exports
 import { __state as marketState } from '@/stores/market';
+// @ts-expect-error — test-only mock state exports
 import { __state as toastState } from '@/stores/toast';
+// @ts-expect-error — test-only mock state exports
 import { __state as themeState } from '@/stores/theme';
 
 // ---------------------------------------------------------------------------

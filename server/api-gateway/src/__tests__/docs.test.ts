@@ -4,7 +4,7 @@
  * Tests OpenAPI spec structure, tag completeness, and Swagger UI HTML.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 // ---------------------------------------------------------------------------
 // Replicate buildOpenAPISpec to test its output

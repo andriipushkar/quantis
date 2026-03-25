@@ -65,7 +65,7 @@ router.get('/screener', async (req: Request, res: Response) => {
         [pair.id]
       );
 
-      const closes = candlesResult.rows.map((r) => parseFloat(r.close)).reverse();
+      const closes = candlesResult.rows.map((r: { close: string }) => parseFloat(r.close)).reverse();
 
       // Compute RSI(14)
       let rsi = 50; // default neutral

@@ -872,10 +872,10 @@ router.get('/wyckoff/:symbol', async (req: Request, res: Response) => {
     const volumeRatio = downVolume > 0 ? round(upVolume / downVolume * 100) / 100 : 999;
 
     // Price structure analysis
-    const closes = candles.map((c) => c.close);
-    const highs = candles.map((c) => c.high);
-    const lows = candles.map((c) => c.low);
-    const volumes = candles.map((c) => c.volume);
+    const closes = candles.map((c: { close: number }) => c.close);
+    const highs = candles.map((c: { high: number }) => c.high);
+    const lows = candles.map((c: { low: number }) => c.low);
+    const volumes = candles.map((c: { volume: number }) => c.volume);
 
     const overallHigh = Math.max(...highs);
     const overallLow = Math.min(...lows);
@@ -883,7 +883,7 @@ router.get('/wyckoff/:symbol', async (req: Request, res: Response) => {
     const currentPrice = closes[closes.length - 1];
 
     // Average volume
-    const avgVolume = volumes.reduce((a, b) => a + b, 0) / volumes.length;
+    const avgVolume = volumes.reduce((a: number, b: number) => a + b, 0) / volumes.length;
 
     // Detect events
     interface WyckoffEvent {
@@ -953,8 +953,8 @@ router.get('/wyckoff/:symbol', async (req: Request, res: Response) => {
     // Check trend direction
     const firstHalf = closes.slice(0, Math.floor(closes.length / 2));
     const secondHalf = closes.slice(Math.floor(closes.length / 2));
-    const firstAvg = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
-    const secondAvg = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
+    const firstAvg = firstHalf.reduce((a: number, b: number) => a + b, 0) / firstHalf.length;
+    const secondAvg = secondHalf.reduce((a: number, b: number) => a + b, 0) / secondHalf.length;
     const trendUp = secondAvg > firstAvg * 1.005;
     const trendDown = secondAvg < firstAvg * 0.995;
 
