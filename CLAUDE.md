@@ -83,6 +83,36 @@ All docs in `docs/` directory:
 - `GET /api/v1/copilot/morning-brief` — AI-generated daily market summary
 - `GET /api/v1/portfolio/analytics` — Portfolio performance metrics from paper trades
 
+## Admin Panel
+Tabbed admin interface at `/admin` with 4 sections:
+- **Overview** — Stats cards (users, MRR, ARR, signals), user growth chart, tier distribution
+- **Users** — Search/filter/pagination, user detail modal (subscriptions, payments, PnL), ban/delete
+- **Revenue** — Real MRR/ARR from payments table, daily revenue chart, payments list, subscriptions overview
+- **System** — DB/Redis health, data collector monitor (exchange lag/status), candle counts
+
+### Admin API Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/admin/dashboard` | GET | Overview stats + real revenue |
+| `/api/v1/admin/users` | GET | Users with search/filter/pagination (?search, ?tier, ?page, ?limit) |
+| `/api/v1/admin/users/:id` | GET | User detail (profile, subscriptions, payments, alerts, PnL) |
+| `/api/v1/admin/users/:id/tier` | PUT | Change user tier |
+| `/api/v1/admin/users/:id/ban` | PUT | Ban/unban user ({action: 'ban'|'unban'}) |
+| `/api/v1/admin/users/:id` | DELETE | Soft delete user |
+| `/api/v1/admin/revenue` | GET | MRR, ARR, growth %, daily breakdown |
+| `/api/v1/admin/revenue/payments` | GET | Payments list (?status, ?page, ?limit) |
+| `/api/v1/admin/revenue/subscriptions` | GET | Subs overview, churn rate, expiring soon |
+| `/api/v1/admin/analytics/user-growth` | GET | Daily registrations (90 days) |
+| `/api/v1/admin/analytics/tier-distribution` | GET | Users per tier |
+| `/api/v1/admin/analytics/collector-status` | GET | Exchange lag, last tick, status |
+| `/api/v1/admin/system` | GET | DB + Redis health |
+
+### Admin Access
+- Controlled via `ADMIN_EMAILS` env var (comma-separated)
+- Default: `andriipushkar@gmail.com`
+- Backend: `requireAdmin()` middleware checks email against env list
+- Frontend: `user.is_admin` flag from GET /auth/me
+
 ## External APIs
 - **DexScreener:** `https://api.dexscreener.com/latest/dex` — Free, no API key, rate-limited
 - **Binance Futures:** `https://fapi.binance.com/fapi/v1` — Funding rates, premium index

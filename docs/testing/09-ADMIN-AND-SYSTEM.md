@@ -199,3 +199,65 @@ print('  ...')
 **Очікуваний результат:**
 - OpenAPI 3.1.0
 - 30+ paths documented
+
+---
+
+### Тест 9.5: Revenue Dashboard
+1. Go to /admin, click "Revenue" tab
+2. Verify MRR, ARR, Revenue Today, Revenue Month cards show values
+3. Verify Growth % shows (green if positive, red if negative)
+4. Check daily revenue chart renders (last 30 days)
+5. If no payments in DB, verify all values show $0.00
+
+### Тест 9.6: Payments List
+1. On Revenue tab, scroll to "Payments" section
+2. Verify table shows: User email, Amount, Crypto, Status, Tx Hash, Date
+3. Use status filter dropdown (All/Pending/Confirmed/Failed/Refunded)
+4. Verify pagination works (Prev/Next)
+5. Click tx_hash link — should be truncated but full hash in title
+
+### Тест 9.7: Subscriptions Overview
+1. On Revenue tab, scroll to "Subscriptions" section
+2. Verify counts: Active, Expired, Cancelled
+3. Verify Churn Rate percentage
+4. Check "Expiring Soon" list (subscriptions expiring in next 7 days)
+
+### Тест 9.8: User Search & Pagination
+1. Go to /admin, click "Users" tab
+2. Type email in search box — verify table filters in real-time
+3. Select tier from dropdown — verify table filters by tier
+4. Verify pagination: page number, Prev/Next buttons
+5. Total users count displayed correctly
+
+### Тест 9.9: User Detail Modal
+1. On Users tab, click any user row
+2. Modal opens with: email, tier, created date, timezone
+3. Verify subscription history table
+4. Verify payments table
+5. Verify alerts count and paper trading PnL
+6. Close modal with X button
+
+### Тест 9.10: Ban / Delete User
+1. Open user detail modal
+2. Click "Ban User" — confirm action
+3. Verify user appears as banned (visual indicator)
+4. Click "Unban" — verify restored
+5. Click "Delete User" — confirmation dialog appears
+6. Confirm delete — user removed from list
+
+### Тест 9.11: User Growth Chart
+1. On Overview tab, check "User Growth" section
+2. Chart shows registrations per day (last 90 days)
+3. Hover/check that data points exist
+
+### Тест 9.12: Tier Distribution
+1. On Overview tab, check "Tier Distribution" section
+2. Bar chart shows: Starter, Trader, Pro, Institutional
+3. Each bar has count label
+
+### Тест 9.13: Data Collector Monitor
+1. Go to /admin, click "System" tab
+2. Check "Data Collector" section
+3. Each exchange shows: name, last tick time, lag (seconds), status indicator
+4. Green = <5s lag, Yellow = 5-30s, Red = >30s
+5. Verify all 3 exchanges listed (Binance, Bybit, OKX)
