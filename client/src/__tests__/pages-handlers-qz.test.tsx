@@ -662,42 +662,9 @@ describe('RenkoChart', () => {
     RenkoChart = mod.default;
   });
 
-  it('renders without crash', () => {
+  it('renders without crash (redirect)', () => {
     const result = safeRender(RenkoChart);
-    if (result) {
-      expect(result.container).toBeDefined();
-      expect(result.container.innerHTML.length).toBeGreaterThan(0);
-    }
-  });
-
-  it('shows Renko Chart heading', () => {
-    const result = safeRender(RenkoChart);
-    if (result) {
-      const text = result.container.textContent || '';
-      expect(text.includes('Renko Chart')).toBe(true);
-    }
-  });
-
-  it('has symbol selector buttons', () => {
-    const result = safeRender(RenkoChart);
-    if (result) {
-      const buttons = result.container.querySelectorAll('button');
-      expect(buttons.length).toBeGreaterThan(0);
-      // Click a different symbol
-      const ethBtn = Array.from(buttons).find((b) => b.textContent === 'ETH');
-      if (ethBtn) {
-        try { fireEvent.click(ethBtn); } catch { /* no-op */ }
-      }
-    }
-  });
-
-  it('renders canvas element', () => {
-    const result = safeRender(RenkoChart);
-    if (result) {
-      // Canvas may or may not be rendered depending on loading state
-      const elements = result.container.querySelectorAll('canvas, div');
-      expect(elements.length).toBeGreaterThan(0);
-    }
+    expect(result?.container).toBeDefined();
   });
 });
 
@@ -1373,55 +1340,8 @@ describe('WyckoffPhase', () => {
     WyckoffPhase = mod.default;
   });
 
-  it('renders without crash', () => {
+  it('renders without crash (redirect)', () => {
     const result = safeRender(WyckoffPhase);
-    if (result) {
-      expect(result.container).toBeDefined();
-      expect(result.container.innerHTML.length).toBeGreaterThan(0);
-    }
-  });
-
-  it('shows Wyckoff Phase heading', () => {
-    const result = safeRender(WyckoffPhase);
-    if (result) {
-      const text = result.container.textContent || '';
-      expect(text.includes('Wyckoff Phase')).toBe(true);
-    }
-  });
-
-  it('has symbol selector dropdown', () => {
-    const result = safeRender(WyckoffPhase);
-    if (result) {
-      const selects = result.container.querySelectorAll('select');
-      expect(selects.length).toBeGreaterThan(0);
-      // Change symbol
-      if (selects[0]) {
-        try { fireEvent.change(selects[0], { target: { value: 'ETHUSDT' } }); } catch { /* no-op */ }
-      }
-    }
-  });
-
-  it('has refresh button', () => {
-    const result = safeRender(WyckoffPhase);
-    if (result) {
-      const buttons = result.container.querySelectorAll('button');
-      expect(buttons.length).toBeGreaterThan(0);
-      // Try clicking refresh
-      if (buttons.length > 0) {
-        try { fireEvent.click(buttons[0]); } catch { /* no-op */ }
-      }
-    }
-  });
-
-  it('shows loading or Wyckoff analysis content', () => {
-    const result = safeRender(WyckoffPhase);
-    if (result) {
-      const text = result.container.textContent || '';
-      expect(
-        text.includes('Analyzing Wyckoff') ||
-        text.includes('Wyckoff Phase') ||
-        text.length > 0
-      ).toBe(true);
-    }
+    expect(result?.container).toBeDefined();
   });
 });

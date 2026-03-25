@@ -1042,35 +1042,8 @@ describe('DevActivity — handler tests', () => {
     DevActivity = mod.default;
   });
 
-  it('renders container with content', () => {
+  it('renders without crash (redirect)', () => {
     const result = safeRender(DevActivity);
-    if (result) {
-      expect(result.container.innerHTML.length).toBeGreaterThan(0);
-    }
-  });
-
-  it('shows header with title', () => {
-    const result = safeRender(DevActivity);
-    if (result) {
-      const h1 = result.container.querySelector('h1');
-      expect(h1).toBeDefined();
-    }
-  });
-
-  it('shows loading spinner or project data', () => {
-    const result = safeRender(DevActivity);
-    if (result) {
-      const hasSpinner = result.container.querySelector('[class*="animate-spin"]');
-      const hasCards = result.container.querySelectorAll('[class*="bg-card"]');
-      expect(hasSpinner !== null || hasCards.length > 0).toBe(true);
-    }
-  });
-
-  it('renders valid HTML structure', () => {
-    const result = safeRender(DevActivity);
-    if (result) {
-      const divs = result.container.querySelectorAll('div');
-      expect(divs.length).toBeGreaterThan(0);
-    }
+    expect(result?.container).toBeDefined();
   });
 });

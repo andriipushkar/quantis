@@ -1880,9 +1880,9 @@ describe('Pricing — full coverage', () => {
   });
 });
 
-// ===================== ElliottWave =====================
+// ===================== ElliottWave (now a redirect) =====================
 
-describe('ElliottWave — full coverage', () => {
+describe('ElliottWave — redirect', () => {
   let ElliottWave: React.ComponentType;
 
   beforeEach(async () => {
@@ -1890,71 +1890,9 @@ describe('ElliottWave — full coverage', () => {
     ElliottWave = mod.default;
   });
 
-  it('renders loading then data with impulse pattern', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({
-        success: true,
-        data: {
-          symbol: 'BTCUSDT',
-          waves: [{ label: '1', price: 50000, index: 0, time: '2025-01-01' }],
-          pattern: 'impulse',
-          confidence: 85,
-          description: 'Impulse wave detected',
-          fibTargets: { wave3Target: 65000, wave5Target: 80000 },
-        },
-      }),
-    });
-    renderPage(ElliottWave);
-    await flushAsync();
-
-    expect(screen.getByText('Elliott Wave')).toBeDefined();
-  });
-
-  it('renders correction and none patterns', async () => {
-    for (const pattern of ['correction', 'none']) {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({
-          success: true,
-          data: {
-            symbol: 'BTCUSDT',
-            waves: [],
-            pattern,
-            confidence: 50,
-            description: `${pattern} pattern`,
-            fibTargets: {},
-          },
-        }),
-      });
-      const { unmount } = renderPage(ElliottWave);
-      await flushAsync();
-      unmount();
-    }
-  });
-
-  it('handles error state', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ success: false, error: 'No data' }),
-    });
-    renderPage(ElliottWave);
-    await flushAsync();
-  });
-
-  it('changes symbol', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ success: true, data: { symbol: 'BTCUSDT', waves: [], pattern: 'none', confidence: 0, description: '', fibTargets: {} } }),
-    });
-    renderPage(ElliottWave);
-    await flushAsync();
-
-    const select = document.querySelector('select');
-    if (select) {
-      fireEvent.change(select, { target: { value: 'ETHUSDT' } });
-      await flushAsync();
-    }
+  it('renders without crashing (redirect page)', () => {
+    const { container } = renderPage(ElliottWave);
+    expect(container).toBeDefined();
   });
 });
 
@@ -2979,20 +2917,31 @@ describe('Portfolio — full coverage', () => {
   });
 
   it('renders with data', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({
-        success: true,
-        data: {
-          totalValue: 50000,
-          change24h: 2.5,
-          holdings: [
-            { symbol: 'BTC', amount: 0.5, value: 30000, change24h: 1.5, allocation: 60 },
-            { symbol: 'ETH', amount: 5, value: 15000, change24h: -0.5, allocation: 30 },
-          ],
-          performanceHistory: [],
-        },
-      }),
+    mockFetch.mockImplementation(async (url: string) => {
+      if (typeof url === 'string' && url.includes('/portfolio/analytics')) {
+        return {
+          ok: true,
+          json: () => Promise.resolve({
+            success: true,
+            data: { totalTrades: 5, winRate: 60, profitFactor: 1.5, sharpeRatio: 1.2, maxDrawdown: 10, totalPnl: 500, bestTrade: null, worstTrade: null, equityCurve: [], monthlyReturns: [] },
+          }),
+        };
+      }
+      return {
+        ok: true,
+        json: () => Promise.resolve({
+          success: true,
+          data: {
+            totalValue: 50000,
+            change24h: 2.5,
+            holdings: [
+              { symbol: 'BTC', amount: 0.5, value: 30000, change24h: 1.5, allocation: 60 },
+              { symbol: 'ETH', amount: 5, value: 15000, change24h: -0.5, allocation: 30 },
+            ],
+            performanceHistory: [],
+          },
+        }),
+      };
     });
     renderPage(Portfolio);
     await flushAsync();

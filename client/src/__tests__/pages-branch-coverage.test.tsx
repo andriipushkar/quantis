@@ -654,56 +654,10 @@ describe('Pages branch coverage — error states and conditional renders', () =>
 
   // ─── DevActivity ───────────────────────────────────────────────
   describe('DevActivity', () => {
-    it('shows error on API failure', async () => {
-      (global.fetch as any).mockRejectedValueOnce(new Error('fail'));
+    it('renders without crash (redirect)', async () => {
       const mod = await import('@/pages/DevActivity');
       const result = await renderAndWait(mod.default);
-      if (result) {
-        await waitFor(() => {
-          expect(result.container.textContent).toContain('Network error');
-        });
-      }
-    });
-
-    it('shows error on API error response', async () => {
-      (global.fetch as any).mockResolvedValueOnce({
-        ok: false,
-        json: () => Promise.resolve({ success: false, error: 'Service unavailable' }),
-      });
-      const mod = await import('@/pages/DevActivity');
-      const result = await renderAndWait(mod.default);
-      if (result) {
-        await waitFor(() => {
-          expect(result.container.textContent).toContain('Service unavailable');
-        });
-      }
-    });
-
-    it('renders projects with various scores', async () => {
-      (global.fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          success: true,
-          data: {
-            projects: [
-              { symbol: 'BTC', name: 'Bitcoin', weeklyCommits: 50, activeDevs: 100, stars: 70000, openIssues: 200, lastRelease: '2024-01-01', devScore: 90 },
-              { symbol: 'ETH', name: 'Ethereum', weeklyCommits: 40, activeDevs: 80, stars: 40000, openIssues: 300, lastRelease: '2024-02-01', devScore: 65 },
-              { symbol: 'DOGE', name: 'Dogecoin', weeklyCommits: 2, activeDevs: 5, stars: 14000, openIssues: 50, lastRelease: '2023-06-01', devScore: 30 },
-              { symbol: 'SOL', name: 'Solana', weeklyCommits: 20, activeDevs: 30, stars: 10000, openIssues: 100, lastRelease: '2024-03-01', devScore: 45 },
-            ],
-          },
-        }),
-      });
-      const mod = await import('@/pages/DevActivity');
-      const result = await renderAndWait(mod.default);
-      if (result) {
-        await waitFor(() => {
-          expect(result.container.textContent).toContain('Bitcoin');
-          expect(result.container.textContent).toContain('Dogecoin');
-          expect(result.container.textContent).toContain('Low development activity warning');
-          expect(result.container.textContent).toContain('Comparison');
-        });
-      }
+      expect(result?.container).toBeDefined();
     });
   });
 
@@ -719,6 +673,12 @@ describe('Pages branch coverage — error states and conditional renders', () =>
     });
 
     it('handles successful message response with context', async () => {
+      // Morning brief fetch (consumed on mount)
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ success: true, data: null }),
+      });
+      // Chat message response
       (global.fetch as any).mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({
@@ -748,6 +708,11 @@ describe('Pages branch coverage — error states and conditional renders', () =>
     });
 
     it('handles API error response', async () => {
+      // Morning brief fetch (consumed on mount)
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ success: true, data: null }),
+      });
       (global.fetch as any).mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ success: false, error: 'Rate limited' }),
@@ -769,6 +734,11 @@ describe('Pages branch coverage — error states and conditional renders', () =>
     });
 
     it('handles network failure', async () => {
+      // Morning brief fetch (consumed on mount)
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ success: true, data: null }),
+      });
       (global.fetch as any).mockRejectedValueOnce(new Error('Offline'));
       const mod = await import('@/pages/Copilot');
       const result = await renderAndWait(mod.default);
@@ -787,6 +757,11 @@ describe('Pages branch coverage — error states and conditional renders', () =>
     });
 
     it('exercises context with RSI > 70 (overbought)', async () => {
+      // Morning brief fetch (consumed on mount)
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ success: true, data: null }),
+      });
       (global.fetch as any).mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({
@@ -816,6 +791,11 @@ describe('Pages branch coverage — error states and conditional renders', () =>
     });
 
     it('exercises context with RSI < 30 (oversold)', async () => {
+      // Morning brief fetch (consumed on mount)
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ success: true, data: null }),
+      });
       (global.fetch as any).mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({
@@ -1420,83 +1400,13 @@ describe('Pages branch coverage — error states and conditional renders', () =>
     });
   });
 
-  // ─── HarmonicPatterns ──────────────────────────────────────────
+  // ─── HarmonicPatterns (now a redirect) ──────────────────────────
   describe('HarmonicPatterns', () => {
-    it('shows error on fetch failure', async () => {
-      (global.fetch as any).mockRejectedValueOnce(new Error('fail'));
+    it('renders without crashing (redirect page)', async () => {
       const mod = await import('@/pages/HarmonicPatterns');
       const result = await renderAndWait(mod.default);
       if (result) {
-        await waitFor(() => {
-          expect(result.container.textContent).toContain('Failed to load harmonic data');
-        });
-      }
-    });
-
-    it('shows error on API error response', async () => {
-      (global.fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ success: false, error: 'Service unavailable' }),
-      });
-      const mod = await import('@/pages/HarmonicPatterns');
-      const result = await renderAndWait(mod.default);
-      if (result) {
-        await waitFor(() => {
-          expect(result.container.textContent).toContain('Service unavailable');
-        });
-      }
-    });
-
-    it('renders with proper pattern data', async () => {
-      (global.fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          success: true,
-          data: {
-            symbol: 'BTCUSDT',
-            patterns: [
-              {
-                name: 'Gartley',
-                type: 'bullish',
-                points: {
-                  X: { price: 48000, index: 0 },
-                  A: { price: 52000, index: 10 },
-                  B: { price: 49500, index: 20 },
-                  C: { price: 51000, index: 30 },
-                  D: { price: 49000, index: 40 },
-                },
-                ratios: { AB_XA: 0.618, BC_AB: 0.382, CD_BC: 1.272, AD_XA: 0.786 },
-                confidence: 85,
-                prz: { low: 48500, high: 49500 },
-                description: 'Bullish Gartley pattern detected',
-              },
-            ],
-          },
-        }),
-      });
-      const mod = await import('@/pages/HarmonicPatterns');
-      const result = await renderAndWait(mod.default);
-      if (result) {
-        await waitFor(() => {
-          expect(result.container.textContent).toContain('Gartley');
-        });
-      }
-    });
-
-    it('renders with no patterns', async () => {
-      (global.fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          success: true,
-          data: { symbol: 'BTCUSDT', patterns: [] },
-        }),
-      });
-      const mod = await import('@/pages/HarmonicPatterns');
-      const result = await renderAndWait(mod.default);
-      if (result) {
-        await waitFor(() => {
-          expect(result.container.textContent).toContain('Harmonic');
-        });
+        expect(result.container).toBeDefined();
       }
     });
   });

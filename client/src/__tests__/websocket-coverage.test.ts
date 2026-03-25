@@ -17,6 +17,7 @@ vi.mock('@/services/socket', () => ({
   connectSocket: vi.fn(),
   getSocket: vi.fn(() => mockSocket),
   disconnectSocket: vi.fn(),
+  subscribeAlerts: vi.fn(),
 }));
 
 // ---- Mock stores ----
@@ -34,6 +35,10 @@ vi.mock('@/stores/toast', () => ({
 
 vi.mock('@/stores/notifications', () => ({
   useNotificationStore: vi.fn((sel: Function) => sel({ addNotification: mockAddNotification })),
+}));
+
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: vi.fn((sel: Function) => sel({ isAuthenticated: true })),
 }));
 
 // ---- Mock React hooks ----
@@ -149,6 +154,7 @@ describe('useWebSocket hook coverage', () => {
 
     expect(mockSocket.off).toHaveBeenCalledWith('ticker:update');
     expect(mockSocket.off).toHaveBeenCalledWith('signal:new');
+    expect(mockSocket.off).toHaveBeenCalledWith('alert:triggered');
     const socketMod = await import('@/services/socket');
     expect(socketMod.disconnectSocket).toHaveBeenCalled();
   });

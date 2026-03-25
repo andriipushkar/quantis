@@ -1090,37 +1090,9 @@ describe('DeFi page', () => {
 describe('DevActivity page', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('renders without crash', () => {
+  it('renders without crash (redirect)', () => {
+    // DevActivity is now a redirect to /on-chain?tab=dev-activity
     const result = safeRender(DevActivity);
     expect(result).not.toBeNull();
-  });
-
-  it('displays "Developer Activity" heading', () => {
-    const result = safeRender(DevActivity);
-    if (result) {
-      expect(result.container.textContent).toContain('Developer Activity');
-    }
-  });
-
-  it('displays subtitle about GitHub metrics', () => {
-    const result = safeRender(DevActivity);
-    if (result) {
-      expect(result.container.textContent).toContain('GitHub development metrics for top crypto projects');
-    }
-  });
-
-  it('shows a loading spinner initially', () => {
-    const result = safeRender(DevActivity);
-    if (result) {
-      const spinner = result.container.querySelector('.animate-spin');
-      expect(spinner).not.toBeNull();
-    }
-  });
-
-  it('has a container element', () => {
-    const result = safeRender(DevActivity);
-    if (result) {
-      expect(result.container.querySelector('div')).not.toBeNull();
-    }
   });
 });

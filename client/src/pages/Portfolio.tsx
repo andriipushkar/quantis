@@ -516,7 +516,7 @@ const Portfolio: React.FC = () => {
           },
         });
         const json = await res.json();
-        if (!cancelled && json.success) {
+        if (!cancelled && json.success && json.data && typeof json.data === 'object' && !Array.isArray(json.data)) {
           setAnalytics(json.data);
         }
       } catch {

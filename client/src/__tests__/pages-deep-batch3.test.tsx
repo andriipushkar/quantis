@@ -129,9 +129,7 @@ const pageTests: Record<string, TestCase[]> = {
     ['shows SOL button', () => { expect(screen.getByText('SOL')).toBeDefined(); }],
   ],
   OrderFlow: [
-    ['shows heading', () => { expect(screen.getByText('Order Flow')).toBeDefined(); }],
-    ['has select dropdown', (r) => { expect(r.container.querySelector('select')).not.toBeNull(); }],
-    ['has 10+ symbol options', (r) => { expect(r.container.querySelectorAll('option').length).toBeGreaterThanOrEqual(10); }],
+    ['renders redirect without crash', (r) => { expect(r.container).toBeDefined(); }],
   ],
   PaperTrading: [
     ['shows heading', () => { expect(screen.getByText('Paper Trading')).toBeDefined(); }],
@@ -183,11 +181,7 @@ const pageTests: Record<string, TestCase[]> = {
     ['shows Referral History', async () => { await waitFor(() => expect(screen.getByText('Referral History')).toBeDefined()); }],
   ],
   RenkoChart: [
-    ['shows heading', () => { expect(screen.getByText('Renko Chart')).toBeDefined(); }],
-    ['shows subtitle', () => { expect(screen.getByText('Non-time-based price chart using fixed brick sizes')).toBeDefined(); }],
-    ['shows BTC button', () => { expect(screen.getByText('BTC')).toBeDefined(); }],
-    ['shows ETH button', () => { expect(screen.getByText('ETH')).toBeDefined(); }],
-    ['has div container', (r) => { expect(r.container.querySelector('div')).not.toBeNull(); }],
+    ['renders redirect without crash', (r) => { expect(r.container).toBeDefined(); }],
   ],
   Screener: [
     ['shows heading', async () => { await waitFor(() => expect(screen.getByText('Screener')).toBeDefined()); }],
@@ -283,12 +277,7 @@ const pageTests: Record<string, TestCase[]> = {
     ['shows Most Active Pair', () => { expect(screen.getByText('Most Active Pair')).toBeDefined(); }],
   ],
   WyckoffPhase: [
-    ['shows heading', () => { expect(screen.getByText('Wyckoff Phase')).toBeDefined(); }],
-    ['has symbol select', (r) => { expect(r.container.querySelector('select')).not.toBeNull(); }],
-    ['has BTCUSDT option', (r) => { const opts = Array.from(r.container.querySelectorAll('option')).map((o) => o.textContent); expect(opts).toContain('BTCUSDT'); }],
-    ['has ETHUSDT option', (r) => { const opts = Array.from(r.container.querySelectorAll('option')).map((o) => o.textContent); expect(opts).toContain('ETHUSDT'); }],
-    ['shows loading text', () => { expect(screen.getByText('Analyzing Wyckoff structure...')).toBeDefined(); }],
-    ['has buttons', (r) => { expect(r.container.querySelectorAll('button').length).toBeGreaterThanOrEqual(1); }],
+    ['renders redirect without crash', (r) => { expect(r.container).toBeDefined(); }],
   ],
 };
 

@@ -959,57 +959,16 @@ describe('MarketBreadth', () => {
 
 describe('MarketProfile', () => {
   let MarketProfile: React.ComponentType;
-  let getMarketProfile: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     const mod = await import('@/pages/MarketProfile');
     MarketProfile = mod.default;
-    const api = await import('@/services/api');
-    getMarketProfile = api.getMarketProfile as any;
   });
 
-  it('renders profile data with normal distribution', async () => {
-    getMarketProfile.mockResolvedValueOnce({
-      poc: 65000, vaHigh: 66000, vaLow: 64000,
-      distributionShape: 'normal',
-      volumeProfile: [
-        { price: 64000, volume: 100, pct: 10 },
-        { price: 65000, volume: 500, pct: 50 },
-        { price: 66000, volume: 150, pct: 15 },
-      ],
-    });
-
-    renderPage(MarketProfile);
-    try { await waitFor(() => {
-      try { expect(screen.queryByText('Market Profile') || document.body.textContent?.includes('Market Profile')).toBeTruthy(); } catch { /* element not found */ }
-    }, { timeout: 100 }); } catch { /* async not ready */ }
-    try { expect(screen.queryByText('Normal') || document.body.textContent?.includes('Normal')).toBeTruthy(); } catch { /* element not found */ }
-    try { expect(screen.queryByText('Volume Profile') || document.body.textContent?.includes('Volume Profile')).toBeTruthy(); } catch { /* element not found */ }
-  });
-
-  it('shows error state', async () => {
-    getMarketProfile.mockRejectedValueOnce(new Error('fail'));
-    renderPage(MarketProfile);
-    try { await waitFor(() => {
-      try { expect(screen.queryByText('Failed to load market profile data') || document.body.textContent?.includes('Failed to load market profile data')).toBeTruthy(); } catch { /* element not found */ }
-    }, { timeout: 100 }); } catch { /* async not ready */ }
-  });
-
-  it('changes symbol', async () => {
-    getMarketProfile.mockResolvedValue({
-      poc: 3500, vaHigh: 3600, vaLow: 3400,
-      distributionShape: 'p-shape',
-      volumeProfile: [{ price: 3500, volume: 200, pct: 40 }],
-    });
-
-    renderPage(MarketProfile);
-    await waitFor(() => screen.getByText('Market Profile'));
-
-    fireEvent.change(screen.getByDisplayValue('BTC/USDT'), { target: { value: 'ETHUSDT' } });
-    try { await waitFor(() => {
-      try { expect(screen.queryByText('P-Shape') || document.body.textContent?.includes('P-Shape')).toBeTruthy(); } catch { /* element not found */ }
-    }, { timeout: 100 }); } catch { /* async not ready */ }
+  it('renders without crash (redirect)', () => {
+    const result = renderPage(MarketProfile);
+    expect(result?.container).toBeDefined();
   });
 });
 
@@ -1240,62 +1199,16 @@ describe('Marketplace', () => {
 
 describe('Narratives', () => {
   let Narratives: React.ComponentType;
-  let getNarratives: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     const mod = await import('@/pages/Narratives');
     Narratives = mod.default;
-    const api = await import('@/services/api');
-    getNarratives = api.getNarratives as any;
   });
 
-  it('renders narrative cards with tokens', async () => {
-    getNarratives.mockResolvedValueOnce([{
-      name: 'DeFi', score: 75, trend: 'rising', avgChange: 3.2, avgVolume: 500_000_000,
-      avgRsi: 55,
-      tokens: [
-        { symbol: 'UNIUSDT', change24h: 5.1 },
-        { symbol: 'AAVEUSDT', change24h: -2.3 },
-      ],
-    }, {
-      name: 'AI', score: 25, trend: 'falling', avgChange: -4.5, avgVolume: 200_000_000,
-      avgRsi: 28,
-      tokens: [],
-    }]);
-
-    renderPage(Narratives);
-    try { await waitFor(() => {
-      try { expect(screen.queryByText('Narrative Tracker') || document.body.textContent?.includes('Narrative Tracker')).toBeTruthy(); } catch { /* element not found */ }
-    }, { timeout: 100 }); } catch { /* async not ready */ }
-    try { expect(screen.queryByText('DeFi') || document.body.textContent?.includes('DeFi')).toBeTruthy(); } catch { /* element not found */ }
-    try { expect(screen.queryByText('AI') || document.body.textContent?.includes('AI')).toBeTruthy(); } catch { /* element not found */ }
-    try { expect(screen.queryByText('UNI') || document.body.textContent?.includes('UNI')).toBeTruthy(); } catch { /* element not found */ }
-    try { expect(screen.queryByText('No ticker data available') || document.body.textContent?.includes('No ticker data available')).toBeTruthy(); } catch { /* element not found */ }
-  });
-
-  it('shows error state and retry', async () => {
-    getNarratives.mockRejectedValueOnce(new Error('fail'));
-    renderPage(Narratives);
-    try { await waitFor(() => {
-      try { expect(screen.queryByText('Failed to fetch narrative data') || document.body.textContent?.includes('Failed to fetch narrative data')).toBeTruthy(); } catch { /* element not found */ }
-    }, { timeout: 100 }); } catch { /* async not ready */ }
-
-    getNarratives.mockResolvedValueOnce([]);
-    fireEvent.click(screen.getByText('Retry'));
-    try { await waitFor(() => {
-      try { expect(screen.queryByText('No narrative data available') || document.body.textContent?.includes('No narrative data available')).toBeTruthy(); } catch { /* element not found */ }
-    }, { timeout: 100 }); } catch { /* async not ready */ }
-  });
-
-  it('covers all trend icon branches', async () => {
-    getNarratives.mockResolvedValueOnce([
-      { name: 'Rising', score: 70, trend: 'rising', avgChange: 2, avgVolume: 100_000, avgRsi: 55, tokens: [] },
-      { name: 'Falling', score: 30, trend: 'falling', avgChange: -3, avgVolume: 100_000, avgRsi: 40, tokens: [] },
-      { name: 'Stable', score: 50, trend: 'stable', avgChange: 0, avgVolume: 100_000, avgRsi: 50, tokens: [] },
-    ]);
-    renderPage(Narratives);
-    await waitFor(() => screen.getByText('Rising'));
+  it('renders without crash (redirect)', () => {
+    const result = renderPage(Narratives);
+    expect(result?.container).toBeDefined();
   });
 });
 
@@ -1312,88 +1225,9 @@ describe('NetworkMetrics', () => {
     NetworkMetrics = mod.default;
   });
 
-  it('renders metrics for BTC', async () => {
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({
-        success: true,
-        data: {
-          symbol: 'BTC', healthScore: 85,
-          interpretation: 'Network is healthy',
-          metrics: {
-            dailyActiveAddresses: 950_000, txCount: 400_000, transferValueUsd: 5_000_000_000,
-            nvtRatio: 30, metcalfeRatio: 1.2, newAddresses: 50_000, giniCoefficient: 0.55,
-          },
-        },
-      }),
-    });
-
-    renderPage(NetworkMetrics);
-    try { await waitFor(() => {
-      try { expect(screen.queryByText('Network Value Metrics') || document.body.textContent?.includes('Network Value Metrics')).toBeTruthy(); } catch { /* element not found */ }
-    }, { timeout: 100 }); } catch { /* async not ready */ }
-    try { expect(screen.queryByText('Network is healthy') || document.body.textContent?.includes('Network is healthy')).toBeTruthy(); } catch { /* element not found */ }
-    try { expect(screen.queryByText('85') || document.body.textContent?.includes('85')).toBeTruthy(); } catch { /* element not found */ }
-  });
-
-  it('switches to ETH', async () => {
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({
-        success: true,
-        data: {
-          symbol: 'BTC', healthScore: 85, interpretation: 'Healthy',
-          metrics: { dailyActiveAddresses: 1_000_000, txCount: 500_000, transferValueUsd: 10_000_000_000, nvtRatio: 55, metcalfeRatio: 0.7, newAddresses: 100_000, giniCoefficient: 0.75 },
-        },
-      }),
-    });
-
-    renderPage(NetworkMetrics);
-    await waitFor(() => screen.getByText('Network Value Metrics'));
-
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({
-        success: true,
-        data: {
-          symbol: 'ETH', healthScore: 60, interpretation: 'Moderate',
-          metrics: { dailyActiveAddresses: 500_000, txCount: 300_000, transferValueUsd: 2_000_000_000, nvtRatio: 20, metcalfeRatio: 1.6, newAddresses: 25_000, giniCoefficient: 0.45 },
-        },
-      }),
-    });
-
-    fireEvent.click(screen.getByText('ETH'));
-    try { await waitFor(() => {
-      try { expect(screen.queryByText('Moderate') || document.body.textContent?.includes('Moderate')).toBeTruthy(); } catch { /* element not found */ }
-    }, { timeout: 100 }); } catch { /* async not ready */ }
-  });
-
-  it('shows error state', async () => {
-    (global.fetch as any).mockRejectedValueOnce(new Error('fail'));
-    renderPage(NetworkMetrics);
-    try { await waitFor(() => {
-      try { expect(screen.queryByText('Network error') || document.body.textContent?.includes('Network error')).toBeTruthy(); } catch { /* element not found */ }
-    }, { timeout: 100 }); } catch { /* async not ready */ }
-  });
-
-  it('covers all NVT/Metcalfe/Gini interpretation branches', async () => {
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({
-        success: true,
-        data: {
-          symbol: 'BTC', healthScore: 35, interpretation: 'Needs attention',
-          metrics: { dailyActiveAddresses: 100_000, txCount: 50_000, transferValueUsd: 500_000_000, nvtRatio: 55, metcalfeRatio: 1.6, newAddresses: 10_000, giniCoefficient: 0.75 },
-        },
-      }),
-    });
-
-    renderPage(NetworkMetrics);
-    try { await waitFor(() => {
-      try { expect(screen.getByText(/potentially overvalued/)).toBeDefined(); } catch { /* element not found */ }
-      try { expect(screen.getByText(/Above fair value/)).toBeDefined(); } catch { /* element not found */ }
-      try { expect(screen.getByText(/whale-heavy/)).toBeDefined(); } catch { /* element not found */ }
-    }, { timeout: 100 }); } catch { /* async not ready */ }
+  it('renders without crash (redirect)', () => {
+    const result = renderPage(NetworkMetrics);
+    expect(result?.container).toBeDefined();
   });
 });
 
@@ -1613,64 +1447,9 @@ describe('OrderFlow', () => {
     OrderFlow = mod.default;
   });
 
-  it('renders order flow data with footprint table', async () => {
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({
-        success: true,
-        data: {
-          symbol: 'BTCUSDT',
-          cumulativeDelta: [100, 250, 180, 300, -50],
-          summary: { totalBuys: 500_000, totalSells: 350_000, netDelta: 150_000, dominantSide: 'buyers' },
-          candles: [{
-            time: '2026-01-15T10:00:00Z',
-            levels: [
-              { price: 65000, buyVol: 50000, sellVol: 30000, delta: 20000 },
-              { price: 64900, buyVol: 20000, sellVol: 40000, delta: -20000 },
-            ],
-          }],
-        },
-      }),
-    });
-
-    renderPage(OrderFlow);
-    try { await waitFor(() => {
-      try { expect(screen.queryByText('Order Flow') || document.body.textContent?.includes('Order Flow')).toBeTruthy(); } catch { /* element not found */ }
-    }, { timeout: 100 }); } catch { /* async not ready */ }
-    try { expect(screen.queryByText('Cumulative Delta') || document.body.textContent?.includes('Cumulative Delta')).toBeTruthy(); } catch { /* element not found */ }
-    try { expect(screen.queryByText('Footprint Data') || document.body.textContent?.includes('Footprint Data')).toBeTruthy(); } catch { /* element not found */ }
-    try { expect(screen.queryByText('buyers') || document.body.textContent?.includes('buyers')).toBeTruthy(); } catch { /* element not found */ }
-  });
-
-  it('shows error state', async () => {
-    (global.fetch as any).mockRejectedValueOnce(new Error('fail'));
-    renderPage(OrderFlow);
-    try { await waitFor(() => {
-      try { expect(screen.queryByText('Failed to load order flow data') || document.body.textContent?.includes('Failed to load order flow data')).toBeTruthy(); } catch { /* element not found */ }
-    }, { timeout: 100 }); } catch { /* async not ready */ }
-  });
-
-  it('changes symbol and refreshes', async () => {
-    (global.fetch as any).mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({
-        success: true,
-        data: {
-          symbol: 'ETHUSDT',
-          cumulativeDelta: [-100, -200],
-          summary: { totalBuys: 100_000, totalSells: 200_000, netDelta: -100_000, dominantSide: 'sellers' },
-          candles: [],
-        },
-      }),
-    });
-
-    renderPage(OrderFlow);
-    await waitFor(() => screen.getByText('Order Flow'));
-
-    fireEvent.change(screen.getByDisplayValue('BTCUSDT'), { target: { value: 'ETHUSDT' } });
-    try { await waitFor(() => {
-      try { expect(screen.queryByText('sellers') || document.body.textContent?.includes('sellers')).toBeTruthy(); } catch { /* element not found */ }
-    }, { timeout: 100 }); } catch { /* async not ready */ }
+  it('renders without crash (redirect)', () => {
+    const result = renderPage(OrderFlow);
+    expect(result?.container).toBeDefined();
   });
 });
 
@@ -1897,8 +1676,18 @@ describe('Portfolio', () => {
   let Portfolio: React.ComponentType;
   let getTickers: ReturnType<typeof vi.fn>;
 
+  const analyticsResponse = {
+    ok: true,
+    json: () => Promise.resolve({
+      success: true,
+      data: { totalTrades: 0, winRate: 0, profitFactor: 0, sharpeRatio: 0, maxDrawdown: 0, totalPnl: 0, bestTrade: null, worstTrade: null, equityCurve: [], monthlyReturns: [] },
+    }),
+  };
+
   beforeEach(async () => {
     vi.clearAllMocks();
+    // Portfolio fetches /api/v1/portfolio/analytics on mount
+    (global.fetch as any).mockResolvedValue(analyticsResponse);
     const mod = await import('@/pages/Portfolio');
     Portfolio = mod.default;
     const api = await import('@/services/api');

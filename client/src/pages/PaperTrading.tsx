@@ -293,7 +293,7 @@ const PaperTrading: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {positions.map((pos) => (
+                {(Array.isArray(positions) ? positions : []).map((pos) => (
                   <tr key={`${pos.symbol}-${pos.openedAt}`} className="border-t border-border hover:bg-secondary/50 transition-colors">
                     <td className="px-5 py-3 font-medium text-foreground">{pos.symbol.replace('USDT', '/USDT')}</td>
                     <td className="px-3 py-3">
@@ -361,7 +361,7 @@ const PaperTrading: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {history.map((trade, i) => (
+                {(Array.isArray(history) ? history : []).map((trade, i) => (
                   <tr key={`${trade.symbol}-${trade.closedAt}-${i}`} className="border-t border-border hover:bg-secondary/50 transition-colors">
                     <td className="px-5 py-3 font-medium text-foreground">{trade.symbol.replace('USDT', '/USDT')}</td>
                     <td className="px-3 py-3">

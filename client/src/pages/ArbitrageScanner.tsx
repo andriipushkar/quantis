@@ -79,11 +79,13 @@ type Tab = 'cross-exchange' | 'funding-rate' | 'triangular' | 'dex-cex';
 
 /* ── Helpers ───────────────────────────────────────────────────── */
 
-const fmt = (n: number, digits = 2) =>
-  n.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+const fmt = (n: number | undefined | null, digits = 2) =>
+  (n ?? 0).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
-const fmtPrice = (n: number) =>
-  n < 1 ? fmt(n, 6) : n < 100 ? fmt(n, 4) : fmt(n, 2);
+const fmtPrice = (n: number | undefined | null) => {
+  const v = n ?? 0;
+  return v < 1 ? fmt(v, 6) : v < 100 ? fmt(v, 4) : fmt(v, 2);
+};
 
 const EXCHANGE_COLORS: Record<string, string> = {
   Binance: 'bg-yellow-500/20 text-yellow-400',

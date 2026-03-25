@@ -149,7 +149,7 @@ const SocialFeed: React.FC = () => {
       if (json.success) {
         setPosts((prev) =>
           prev.map((p) =>
-            p.id === postId ? { ...p, likeCount: json.data.likeCount } : p
+            p.id === postId ? { ...p, likeCount: json.data?.likeCount ?? p.likeCount } : p
           )
         );
       }

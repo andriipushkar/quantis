@@ -58,8 +58,33 @@ All docs in `docs/` directory:
   - `/on-chain` — Dev Activity + Network Metrics (tabs)
   - `/social-intelligence` — Narratives + Influencer Tracker (tabs)
 - **New pages:**
-  - `/arbitrage` — Arbitrage Scanner (cross-exchange, funding rate, triangular)
+  - `/arbitrage` — Arbitrage Scanner (cross-exchange, funding rate, triangular, DEX-CEX)
   - `/backtester` — Strategy Backtester (preset + custom strategies, equity curve, stats)
   - `/grid-bot` — Grid Bot (price range grid trading with simulation)
+- **Arbitrage enhancements:**
+  - Fee accounting — taker fees per exchange (Binance 0.1%, Bybit 0.1%, OKX 0.08%), net profit calculation
+  - DEX-CEX arbitrage — 4th type via DexScreener free API, 10 tokens, circuit breaker, Redis cache
+  - Arbitrage alerts — POST endpoint + UI modal for spread/funding/dex_cex threshold alerts
+- **AI Copilot:**
+  - Morning Brief — daily AI market summary (gainers/losers, trade ideas, key levels)
+  - Cached per user for 30 minutes, rate-limited to 1/hour
+- **Portfolio analytics:**
+  - GET /api/v1/portfolio/analytics — Sharpe ratio, max drawdown, win rate, profit factor
+  - Equity curve chart, monthly returns bars, best/worst trade
+  - Computed from paper_trades data
+- **Quick price alerts:**
+  - Bell icon on watchlist cards, one-click "alert above/below" creation
 - **i18n:** English, Ukrainian, German, Spanish now available
 - Old individual routes redirect to merged pages with appropriate `?tab=` parameter
+
+## API Endpoints (New)
+- `GET /api/v1/market/arbitrage/dex-cex` — DEX vs CEX price comparison (DexScreener + ticker cache)
+- `POST /api/v1/market/arbitrage/alerts` — Create arbitrage-specific alerts
+- `GET /api/v1/copilot/morning-brief` — AI-generated daily market summary
+- `GET /api/v1/portfolio/analytics` — Portfolio performance metrics from paper trades
+
+## External APIs
+- **DexScreener:** `https://api.dexscreener.com/latest/dex` — Free, no API key, rate-limited
+- **Binance Futures:** `https://fapi.binance.com/fapi/v1` — Funding rates, premium index
+- **Bybit:** `https://api-testnet.bybit.com/v5/market` — Funding rates, tickers
+- **Anthropic Claude:** `https://api.anthropic.com/v1/messages` — AI analysis (requires ANTHROPIC_API_KEY)

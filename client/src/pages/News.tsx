@@ -79,7 +79,7 @@ const News: React.FC = () => {
       const res = await fetch('/api/v1/news');
       if (!res.ok) throw new Error('Failed to fetch news');
       const json = await res.json();
-      setNews(json.data ?? []);
+      setNews(Array.isArray(json.data) ? json.data : []);
       setError(null);
     } catch (err) {
       setError((err as Error).message);

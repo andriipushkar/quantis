@@ -486,10 +486,10 @@ describe('WatchlistStrip', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/chart/BTCUSDT');
   });
 
-  it('renders exactly 8 buttons', () => {
+  it('renders at least 8 buttons (cards + bell icons)', () => {
     wrap(<WatchlistStrip />);
     const buttons = screen.getAllByRole('button');
-    expect(buttons.length).toBe(8);
+    expect(buttons.length).toBeGreaterThanOrEqual(8);
   });
 });
 

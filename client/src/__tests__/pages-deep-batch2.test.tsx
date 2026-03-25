@@ -41,15 +41,44 @@ function safeRender(Page: React.ComponentType) {
   try { return render(<MemoryRouter><Page /></MemoryRouter>); } catch { return null; }
 }
 
-const pages = [
-  'ElliottWave', 'ExchangeHealth', 'FundingRates', 'HarmonicPatterns',
-  'Heatmap', 'IndicatorLibrary', 'InfluencerTracker', 'IntermarketAnalysis',
-  'Journal', 'Landing', 'Leaderboard', 'Liquidations',
-  'MarketBreadth', 'MarketProfile', 'MarketRegime', 'Marketplace',
-  'MultiChart', 'Narratives', 'NetworkMetrics', 'News',
+// Pages that now redirect via <Navigate> — they render no visible content in jsdom
+const redirectPages = [
+  'ElliottWave', 'HarmonicPatterns', 'InfluencerTracker',
+  'MarketProfile', 'Narratives', 'NetworkMetrics',
 ] as const;
 
-describe.each(pages)('%s deep tests', (pageName) => {
+// Pages that render real content
+const contentPages = [
+  'ExchangeHealth', 'FundingRates',
+  'Heatmap', 'IndicatorLibrary', 'IntermarketAnalysis',
+  'Journal', 'Landing', 'Leaderboard', 'Liquidations',
+  'MarketBreadth', 'MarketRegime', 'Marketplace',
+  'MultiChart', 'News',
+] as const;
+
+describe.each(redirectPages)('%s (redirect) deep tests', (pageName) => {
+  let Page: React.ComponentType;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const mod = await import(`@/pages/${pageName}`);
+    Page = mod.default;
+  });
+
+  it('renders without crash', () => {
+    const result = safeRender(Page);
+    expect(result).not.toBeNull();
+  });
+
+  it('container exists', () => {
+    const result = safeRender(Page);
+    if (result) {
+      expect(result.container).toBeDefined();
+    }
+  });
+});
+
+describe.each(contentPages)('%s deep tests', (pageName) => {
   let Page: React.ComponentType;
 
   beforeEach(async () => {

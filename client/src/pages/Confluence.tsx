@@ -39,9 +39,9 @@ const Confluence: React.FC = () => {
       try {
         const res = await fetch(`/api/v1/market/confluence/${symbol}`);
         const json = await res.json();
-        if (json.success) {
+        if (json.success && json.data && typeof json.data === 'object' && !Array.isArray(json.data)) {
           setData(json.data);
-        } else {
+        } else if (!json.success) {
           setError(json.error || 'Failed to load confluence data');
           setData(null);
         }
@@ -55,9 +55,10 @@ const Confluence: React.FC = () => {
   }, [symbol]);
 
   // Build visual price ladder data
-  const aboveZones = data ? data.zones.filter((z) => z.distancePercent > 0.05).slice(0, 8) : [];
-  const belowZones = data ? data.zones.filter((z) => z.distancePercent < -0.05).slice(0, 8) : [];
-  const atPrice = data ? data.zones.filter((z) => Math.abs(z.distancePercent) <= 0.05) : [];
+  const zones = data?.zones ?? [];
+  const aboveZones = zones.filter((z) => z.distancePercent > 0.05).slice(0, 8);
+  const belowZones = zones.filter((z) => z.distancePercent < -0.05).slice(0, 8);
+  const atPrice = zones.filter((z) => Math.abs(z.distancePercent) <= 0.05);
 
   // Sort for ladder: above descending, below ascending
   aboveZones.sort((a, b) => b.distancePercent - a.distancePercent);

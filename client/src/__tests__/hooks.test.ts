@@ -25,6 +25,7 @@ vi.mock('@/services/socket', () => ({
   connectSocket: vi.fn(),
   getSocket: vi.fn(() => mockSocket),
   disconnectSocket: vi.fn(),
+  subscribeAlerts: vi.fn(),
 }));
 
 // ---- Mock stores ----
@@ -48,6 +49,12 @@ vi.mock('@/stores/toast', () => ({
 vi.mock('@/stores/notifications', () => ({
   useNotificationStore: vi.fn((selector: (s: unknown) => unknown) =>
     selector({ addNotification: mockAddNotification })
+  ),
+}));
+
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: vi.fn((selector: (s: unknown) => unknown) =>
+    selector({ isAuthenticated: true })
   ),
 }));
 
@@ -84,6 +91,7 @@ describe('useWebSocket hook', () => {
       connectSocket: vi.fn(),
       getSocket: vi.fn(() => mockSocket),
       disconnectSocket: vi.fn(),
+      subscribeAlerts: vi.fn(),
     }));
     vi.doMock('@/stores/market', () => ({
       useMarketStore: vi.fn((selector: (s: unknown) => unknown) =>
@@ -98,6 +106,11 @@ describe('useWebSocket hook', () => {
     vi.doMock('@/stores/notifications', () => ({
       useNotificationStore: vi.fn((selector: (s: unknown) => unknown) =>
         selector({ addNotification: mockAddNotification })
+      ),
+    }));
+    vi.doMock('@/stores/auth', () => ({
+      useAuthStore: vi.fn((selector: (s: unknown) => unknown) =>
+        selector({ isAuthenticated: true })
       ),
     }));
     vi.doMock('react', () => ({
@@ -150,6 +163,7 @@ describe('useWebSocket hook', () => {
 
     expect(mockOff).toHaveBeenCalledWith('ticker:update');
     expect(mockOff).toHaveBeenCalledWith('signal:new');
+    expect(mockOff).toHaveBeenCalledWith('alert:triggered');
     expect(socketMod.disconnectSocket).toHaveBeenCalled();
   });
 

@@ -157,8 +157,8 @@ const Journal: React.FC = () => {
         apiFetch<{ success: boolean; data: JournalEntry[] }>('/api/v1/journal'),
         apiFetch<{ success: boolean; data: JournalStats }>('/api/v1/journal/stats'),
       ]);
-      setEntries(entriesRes.data);
-      setStats(statsRes.data);
+      setEntries(Array.isArray(entriesRes.data) ? entriesRes.data : []);
+      setStats(statsRes.data && typeof statsRes.data === 'object' && !Array.isArray(statsRes.data) ? statsRes.data : null);
     } catch {
       // silent
     } finally {
@@ -249,7 +249,7 @@ const Journal: React.FC = () => {
     }
   };
 
-  const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmt = (n: number | undefined | null) => (n ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
     <div className="space-y-6">
@@ -588,7 +588,7 @@ const Journal: React.FC = () => {
                         )}
                       >
                         {entry.pnlPct !== null
-                          ? `${entry.pnlPct >= 0 ? '+' : ''}${entry.pnlPct.toFixed(2)}%`
+                          ? `${entry.pnlPct >= 0 ? '+' : ''}${(entry.pnlPct ?? 0).toFixed(2)}%`
                           : '—'}
                       </td>
                       <td className="py-3 px-4 text-muted-foreground text-xs">

@@ -25,12 +25,12 @@ jest.mock('technicalindicators', () => ({
   bullishengulfingpattern: (...args: any[]) => mockBullishEngulfing(...args),
   bearishengulfingpattern: (...args: any[]) => mockBearishEngulfing(...args),
   doji: (...args: any[]) => mockDoji(...args),
-  hammer: (...args: any[]) => mockHammer(...args),
+  hammerpattern: (...args: any[]) => mockHammer(...args),
   hangingman: (...args: any[]) => mockHangingMan(...args),
   shootingstar: (...args: any[]) => mockShootingStar(...args),
   morningstar: (...args: any[]) => mockMorningStar(...args),
   eveningstar: (...args: any[]) => mockEveningStar(...args),
-  invertedhammer: (...args: any[]) => mockInvertedHammer(...args),
+  bullishinvertedhammerstick: (...args: any[]) => mockInvertedHammer(...args),
 }));
 
 import { detectCandlestickPatterns, CandleInput } from '../patterns/candlestick';
