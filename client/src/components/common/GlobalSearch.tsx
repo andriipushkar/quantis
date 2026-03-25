@@ -65,6 +65,14 @@ const LABEL_NAMES: Record<string, string> = {
   'nav.news': 'News',
   'nav.influencerTracker': 'Influencer Tracker',
   'nav.academy': 'Academy',
+  'nav.arbitrage': 'Arbitrage Scanner',
+  'nav.backtester': 'Strategy Backtester',
+  'nav.gridBot': 'Grid Bot',
+  'nav.advancedPatterns': 'Advanced Patterns',
+  'nav.advancedCharts': 'Advanced Charts',
+  'nav.onChain': 'On-Chain Analytics',
+  'nav.socialIntelligence': 'Social Intelligence',
+  'nav.antiLiquidation': 'Anti-Liquidation',
 };
 
 // Build PAGES from the shared navigation config so every page is searchable

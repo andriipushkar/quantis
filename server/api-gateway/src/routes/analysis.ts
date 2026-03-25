@@ -1130,4 +1130,333 @@ router.get('/confluence', async (_req: Request, res: Response) => {
   }
 });
 
+// ── Strategy Backtester ────────────────────────────────────────────
+
+interface BacktestCondition {
+  indicator: string;
+  operator: string;
+  value: number;
+}
+
+interface BacktestStrategy {
+  entry_conditions: BacktestCondition[];
+  exit_conditions: BacktestCondition[];
+  stop_loss_pct: number;
+  take_profit_pct: number;
+}
+
+interface BacktestTrade {
+  entry_time: string;
+  exit_time: string;
+  side: 'long';
+  entry_price: number;
+  exit_price: number;
+  pnl_pct: number;
+  duration_ms: number;
+}
+
+/** Compute MACD line series (EMA12 - EMA26). */
+function calculateMACD(closes: number[]): number[] {
+  const ema12 = calculateEMA(closes, 12);
+  const ema26 = calculateEMA(closes, 26);
+  if (ema12.length === 0 || ema26.length === 0) return [];
+  // Align: ema12 starts at index 11, ema26 at index 25 → offset = 14
+  const offset = 26 - 12; // 14
+  const macd: number[] = [];
+  for (let i = 0; i < ema26.length; i++) {
+    macd.push(ema12[i + offset] - ema26[i]);
+  }
+  return macd;
+}
+
+/**
+ * Resolve an indicator value at a given candle index.
+ * Returns the indicator value aligned to the candle array.
+ */
+function resolveIndicator(
+  indicator: string,
+  idx: number,
+  closes: number[],
+  cache: Map<string, number[]>
+): number | null {
+  const key = indicator.toUpperCase();
+
+  if (!cache.has(key)) {
+    switch (key) {
+      case 'RSI':
+        cache.set(key, paddedSeries(calculateRSI(closes, 14), closes.length, 14 + 1));
+        break;
+      case 'EMA9':
+        cache.set(key, paddedSeries(calculateEMA(closes, 9), closes.length, 9));
+        break;
+      case 'EMA21':
+        cache.set(key, paddedSeries(calculateEMA(closes, 21), closes.length, 21));
+        break;
+      case 'MACD':
+        cache.set(key, paddedSeries(calculateMACD(closes), closes.length, 26));
+        break;
+      case 'BB_UPPER': {
+        const bb = calculateBB(closes, 20, 2);
+        cache.set('BB_UPPER', paddedSeries(bb.upper, closes.length, 20));
+        cache.set('BB_LOWER', paddedSeries(bb.lower, closes.length, 20));
+        cache.set('BB_MIDDLE', paddedSeries(bb.middle, closes.length, 20));
+        break;
+      }
+      case 'BB_LOWER': {
+        const bb2 = calculateBB(closes, 20, 2);
+        cache.set('BB_UPPER', paddedSeries(bb2.upper, closes.length, 20));
+        cache.set('BB_LOWER', paddedSeries(bb2.lower, closes.length, 20));
+        cache.set('BB_MIDDLE', paddedSeries(bb2.middle, closes.length, 20));
+        break;
+      }
+      default:
+        return null;
+    }
+  }
+
+  const series = cache.get(key);
+  if (!series || idx >= series.length) return null;
+  return series[idx];
+}
+
+/** Pad a shorter indicator series with NaN so its indices align with the candle array. */
+function paddedSeries(series: number[], totalLen: number, minDataPoints: number): number[] {
+  const padLen = totalLen - series.length;
+  const padded = new Array(padLen).fill(NaN);
+  return padded.concat(series);
+}
+
+function evalCondition(
+  cond: BacktestCondition,
+  idx: number,
+  closes: number[],
+  cache: Map<string, number[]>
+): boolean {
+  const val = resolveIndicator(cond.indicator, idx, closes, cache);
+  if (val === null || isNaN(val)) return false;
+
+  switch (cond.operator) {
+    case '>':
+      return val > cond.value;
+    case '<':
+      return val < cond.value;
+    case 'crosses_above': {
+      if (idx < 1) return false;
+      const prev = resolveIndicator(cond.indicator, idx - 1, closes, cache);
+      if (prev === null || isNaN(prev)) return false;
+      return prev <= cond.value && val > cond.value;
+    }
+    case 'crosses_below': {
+      if (idx < 1) return false;
+      const prev = resolveIndicator(cond.indicator, idx - 1, closes, cache);
+      if (prev === null || isNaN(prev)) return false;
+      return prev >= cond.value && val < cond.value;
+    }
+    default:
+      return false;
+  }
+}
+
+// POST /backtest — run a strategy backtest on historical OHLCV data
+router.post('/backtest', async (req: Request, res: Response) => {
+  try {
+    const { symbol, timeframe, from, to, strategy } = req.body as {
+      symbol: string;
+      timeframe: string;
+      from: string;
+      to: string;
+      strategy: BacktestStrategy;
+    };
+
+    // Validate inputs
+    if (!symbol || !timeframe || !from || !to || !strategy) {
+      res.status(400).json({ success: false, error: 'Missing required fields: symbol, timeframe, from, to, strategy' });
+      return;
+    }
+
+    const table = SAFE_TABLES[timeframe];
+    if (!table) {
+      res.status(400).json({ success: false, error: 'Invalid timeframe', validTimeframes: Object.keys(SAFE_TABLES) });
+      return;
+    }
+
+    if (!strategy.entry_conditions?.length || !strategy.exit_conditions?.length) {
+      res.status(400).json({ success: false, error: 'Strategy must have at least one entry and one exit condition' });
+      return;
+    }
+
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+      res.status(400).json({ success: false, error: 'Invalid date format for from/to' });
+      return;
+    }
+
+    const stopLossPct = strategy.stop_loss_pct ?? 5;
+    const takeProfitPct = strategy.take_profit_pct ?? 10;
+
+    // Fetch OHLCV data with parameterized query
+    const result = await query(
+      `SELECT o.time, o.open, o.high, o.low, o.close, o.volume
+       FROM ${table} o
+       JOIN trading_pairs tp ON tp.id = o.pair_id
+       WHERE tp.symbol = $1
+         AND o.time >= $2
+         AND o.time <= $3
+       ORDER BY o.time ASC`,
+      [symbol.toUpperCase(), fromDate.toISOString(), toDate.toISOString()]
+    );
+
+    if (result.rows.length < 30) {
+      res.json({
+        success: true,
+        data: {
+          trades: [],
+          stats: { total_trades: 0, win_rate: 0, profit_factor: 0, max_drawdown_pct: 0, sharpe_ratio: 0, total_return_pct: 0 },
+          equity_curve: [],
+        },
+      });
+      return;
+    }
+
+    const candles = result.rows.map((r: { time: string; open: string; high: string; low: string; close: string; volume: string }) => ({
+      time: r.time,
+      open: parseFloat(r.open),
+      high: parseFloat(r.high),
+      low: parseFloat(r.low),
+      close: parseFloat(r.close),
+      volume: parseFloat(r.volume),
+    }));
+
+    const closes = candles.map((c: { close: number }) => c.close);
+    const indicatorCache = new Map<string, number[]>();
+
+    // Simulate strategy
+    const trades: BacktestTrade[] = [];
+    let equity = 10000;
+    let peakEquity = equity;
+    let maxDrawdownPct = 0;
+    const equityCurve: { time: string; equity: number }[] = [{ time: candles[0].time, equity }];
+
+    let inPosition = false;
+    let entryPrice = 0;
+    let entryTime = '';
+
+    for (let i = 26; i < candles.length; i++) {
+      const price = candles[i].close;
+
+      if (!inPosition) {
+        // Check all entry conditions (AND logic)
+        const allEntry = strategy.entry_conditions.every((cond) =>
+          evalCondition(cond, i, closes, indicatorCache)
+        );
+        if (allEntry) {
+          inPosition = true;
+          entryPrice = price;
+          entryTime = candles[i].time;
+        }
+      } else {
+        // Check stop loss / take profit
+        const pnlPct = ((price - entryPrice) / entryPrice) * 100;
+
+        let shouldExit = false;
+        let exitPrice = price;
+
+        // Stop loss hit (check candle low)
+        const slPrice = entryPrice * (1 - stopLossPct / 100);
+        if (candles[i].low <= slPrice) {
+          shouldExit = true;
+          exitPrice = slPrice;
+        }
+
+        // Take profit hit (check candle high)
+        const tpPrice = entryPrice * (1 + takeProfitPct / 100);
+        if (candles[i].high >= tpPrice) {
+          shouldExit = true;
+          exitPrice = tpPrice;
+        }
+
+        // Check exit conditions (any one triggers exit)
+        if (!shouldExit) {
+          const anyExit = strategy.exit_conditions.some((cond) =>
+            evalCondition(cond, i, closes, indicatorCache)
+          );
+          if (anyExit) {
+            shouldExit = true;
+            exitPrice = price;
+          }
+        }
+
+        if (shouldExit) {
+          const tradePnlPct = ((exitPrice - entryPrice) / entryPrice) * 100;
+          equity *= 1 + tradePnlPct / 100;
+
+          trades.push({
+            entry_time: entryTime,
+            exit_time: candles[i].time,
+            side: 'long',
+            entry_price: round(entryPrice),
+            exit_price: round(exitPrice),
+            pnl_pct: round(tradePnlPct),
+            duration_ms: new Date(candles[i].time).getTime() - new Date(entryTime).getTime(),
+          });
+
+          inPosition = false;
+          entryPrice = 0;
+          entryTime = '';
+        }
+      }
+
+      // Track equity and drawdown
+      if (equity > peakEquity) peakEquity = equity;
+      const dd = ((peakEquity - equity) / peakEquity) * 100;
+      if (dd > maxDrawdownPct) maxDrawdownPct = dd;
+
+      // Sample equity curve (every Nth candle to keep payload small)
+      const step = Math.max(1, Math.floor(candles.length / 200));
+      if (i % step === 0 || i === candles.length - 1) {
+        equityCurve.push({ time: candles[i].time, equity: round(equity) });
+      }
+    }
+
+    // Calculate stats
+    const wins = trades.filter((t) => t.pnl_pct > 0);
+    const losses = trades.filter((t) => t.pnl_pct <= 0);
+    const totalTrades = trades.length;
+    const winRate = totalTrades > 0 ? round((wins.length / totalTrades) * 100) : 0;
+    const grossProfit = wins.reduce((s, t) => s + t.pnl_pct, 0);
+    const grossLoss = Math.abs(losses.reduce((s, t) => s + t.pnl_pct, 0));
+    const profitFactor = grossLoss > 0 ? round(grossProfit / grossLoss) : grossProfit > 0 ? 999 : 0;
+    const totalReturnPct = round(((equity - 10000) / 10000) * 100);
+
+    // Sharpe ratio (annualized, approximate)
+    const returns = trades.map((t) => t.pnl_pct / 100);
+    const meanReturn = returns.length > 0 ? returns.reduce((a, b) => a + b, 0) / returns.length : 0;
+    const variance = returns.length > 1
+      ? returns.reduce((s, r) => s + (r - meanReturn) ** 2, 0) / (returns.length - 1)
+      : 0;
+    const stdReturn = Math.sqrt(variance);
+    const sharpeRatio = stdReturn > 0 ? round((meanReturn / stdReturn) * Math.sqrt(252)) : 0;
+
+    res.json({
+      success: true,
+      data: {
+        trades,
+        stats: {
+          total_trades: totalTrades,
+          win_rate: winRate,
+          profit_factor: profitFactor,
+          max_drawdown_pct: round(maxDrawdownPct),
+          sharpe_ratio: sharpeRatio,
+          total_return_pct: totalReturnPct,
+        },
+        equity_curve: equityCurve,
+      },
+    });
+  } catch (err) {
+    logger.error('Backtest error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 export default router;

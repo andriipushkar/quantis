@@ -163,9 +163,9 @@ describe('navigation config', () => {
     expect(core.defaultOpen).toBe(true);
   });
 
-  it('Analysis group has 14 items', () => {
+  it('Analysis group has 10 items (merged pages)', () => {
     const analysis = NAV_GROUPS.find((g) => g.id === 'analysis')!;
-    expect(analysis.items).toHaveLength(14);
+    expect(analysis.items).toHaveLength(10);
   });
 
   it('ALL_NAV_ITEMS is the flat list of all group items', () => {
@@ -342,13 +342,13 @@ describe('Sidebar — collapsible groups', () => {
   it('shows lock icon on tier-gated items for free users', () => {
     // mockAuthState.user.tier is 'free'
     wrap(<Sidebar collapsed={false} onToggle={vi.fn()} />, '/signals');
-    // Elliott Wave is tier: pro — should show lock
+    // Advanced Patterns is tier: pro — should show lock
     // The analysis group auto-expands because /signals is there
     const links = screen.getAllByRole('link');
-    const elliottLink = links.find((l) => l.textContent?.includes('nav.elliottWave'));
-    expect(elliottLink).toBeTruthy();
+    const patternsLink = links.find((l) => l.textContent?.includes('nav.advancedPatterns'));
+    expect(patternsLink).toBeTruthy();
     // Locked items have opacity-50
-    expect(elliottLink?.className).toContain('opacity-50');
+    expect(patternsLink?.className).toContain('opacity-50');
   });
 
   it('renders Upgrade link', () => {
@@ -493,11 +493,11 @@ describe('GlobalSearch — all pages searchable', () => {
     expect(screen.getByPlaceholderText(/search/i)).toBeTruthy();
   });
 
-  it('finds pages that were previously missing (e.g., Elliott Wave)', () => {
+  it('finds new merged pages (e.g., Advanced Patterns)', () => {
     wrap(<GlobalSearch isOpen={true} onClose={vi.fn()} />);
     const input = screen.getByPlaceholderText(/search/i);
-    fireEvent.change(input, { target: { value: 'Elliott' } });
-    expect(screen.getByText('Elliott Wave')).toBeTruthy();
+    fireEvent.change(input, { target: { value: 'Advanced' } });
+    expect(screen.getByText('Advanced Patterns')).toBeTruthy();
   });
 
   it('finds Wallet Tracker page', () => {
@@ -507,11 +507,11 @@ describe('GlobalSearch — all pages searchable', () => {
     expect(screen.getByText('Wallet Tracker')).toBeTruthy();
   });
 
-  it('finds Wyckoff page', () => {
+  it('finds new pages (e.g., Arbitrage Scanner)', () => {
     wrap(<GlobalSearch isOpen={true} onClose={vi.fn()} />);
     const input = screen.getByPlaceholderText(/search/i);
-    fireEvent.change(input, { target: { value: 'Wyckoff' } });
-    expect(screen.getByText('Wyckoff Phase')).toBeTruthy();
+    fireEvent.change(input, { target: { value: 'Arbitrage' } });
+    expect(screen.getByText('Arbitrage Scanner')).toBeTruthy();
   });
 
   it('closes on Escape key', () => {

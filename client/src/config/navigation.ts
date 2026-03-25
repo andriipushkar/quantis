@@ -46,17 +46,18 @@ import {
   BarChart4,
   BookMarked,
   Code,
-  Waves,
-  Hexagon,
   Megaphone,
   PieChart,
   Coins,
   Globe2,
-  GitBranch,
   Network,
   Box,
   CircleDollarSign as BitcoinIcon,
   Gauge,
+  ArrowLeftRight,
+  FlaskConical,
+  Grid2X2,
+  ShieldAlert,
 } from 'lucide-react';
 import type { ElementType } from 'react';
 
@@ -128,12 +129,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { icon: Calendar, labelKey: 'nav.seasonality', path: '/seasonality' },
       { icon: Activity, labelKey: 'nav.marketBreadth', path: '/market-breadth' },
       { icon: Crosshair, labelKey: 'nav.confluence', path: '/confluence', tier: 'pro' },
-      { icon: Eye, labelKey: 'nav.patternScanner', path: '/pattern-scanner', tier: 'pro' },
-      { icon: Waves, labelKey: 'nav.elliottWave', path: '/elliott-wave', tier: 'pro' },
-      { icon: Hexagon, labelKey: 'nav.harmonicPatterns', path: '/harmonic-patterns', tier: 'pro' },
-      { icon: Layers, labelKey: 'nav.wyckoff', path: '/wyckoff', tier: 'pro' },
-      { icon: BarChart4, labelKey: 'nav.orderFlow', path: '/order-flow', tier: 'institutional' },
-      { icon: BarChart2, labelKey: 'nav.marketProfile', path: '/market-profile', tier: 'institutional' },
+      { icon: Eye, labelKey: 'nav.advancedPatterns', path: '/advanced-patterns', tier: 'pro' },
+      { icon: BarChart4, labelKey: 'nav.advancedCharts', path: '/advanced-charts', tier: 'institutional' },
       { icon: Globe2, labelKey: 'nav.intermarket', path: '/intermarket', tier: 'pro' },
     ],
   },
@@ -148,9 +145,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { icon: Flame, labelKey: 'nav.liquidations', path: '/liquidations' },
       { icon: Server, labelKey: 'nav.exchangeHealth', path: '/exchange-health' },
       { icon: Coins, labelKey: 'nav.defi', path: '/defi' },
-      { icon: Network, labelKey: 'nav.networkMetrics', path: '/network-metrics', tier: 'pro' },
+      { icon: Network, labelKey: 'nav.onChain', path: '/on-chain', tier: 'pro' },
       { icon: PieChart, labelKey: 'nav.tokenomics', path: '/tokenomics', tier: 'pro' },
-      { icon: Box, labelKey: 'nav.renko', path: '/renko' },
       { icon: BitcoinIcon, labelKey: 'nav.btcModels', path: '/btc-models' },
     ],
   },
@@ -160,7 +156,10 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { icon: CircleDollarSign, labelKey: 'nav.paperTrading', path: '/paper-trading' },
       { icon: Repeat, labelKey: 'nav.dcaBot', path: '/dca', tier: 'pro' },
+      { icon: Grid2X2, labelKey: 'nav.gridBot', path: '/grid-bot', tier: 'pro' },
       { icon: Users, labelKey: 'nav.copyTrading', path: '/copy-trading', tier: 'pro' },
+      { icon: ArrowLeftRight, labelKey: 'nav.arbitrage', path: '/arbitrage', tier: 'pro' },
+      { icon: ShieldAlert, labelKey: 'nav.antiLiquidation', path: '/anti-liquidation' },
       { icon: Rewind, labelKey: 'nav.chartReplay', path: '/chart-replay' },
     ],
   },
@@ -169,6 +168,7 @@ export const NAV_GROUPS: NavGroup[] = [
     labelKey: 'navGroup.aiTools',
     items: [
       { icon: Bot, labelKey: 'nav.copilot', path: '/copilot' },
+      { icon: FlaskConical, labelKey: 'nav.backtester', path: '/backtester', tier: 'pro' },
       { icon: Code, labelKey: 'nav.scriptEditor', path: '/script-editor', tier: 'pro' },
       { icon: BookMarked, labelKey: 'nav.indicatorLibrary', path: '/indicators' },
       { icon: BarChart2, labelKey: 'nav.options', path: '/options', tier: 'pro' },
@@ -195,7 +195,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { icon: Trophy, labelKey: 'nav.leaderboard', path: '/leaderboard' },
       { icon: Store, labelKey: 'nav.marketplace', path: '/marketplace' },
       { icon: Newspaper, labelKey: 'nav.news', path: '/news' },
-      { icon: Megaphone, labelKey: 'nav.influencerTracker', path: '/influencers' },
+      { icon: Megaphone, labelKey: 'nav.socialIntelligence', path: '/social-intelligence' },
     ],
   },
   {
@@ -210,12 +210,8 @@ export const NAV_GROUPS: NavGroup[] = [
 // Flat list of all items (used by GlobalSearch, etc.)
 export const ALL_NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 
-// Items not in any of the above groups (legacy — kept for completeness)
-// narratives & devActivity were in the old flat list
-export const LEGACY_ITEMS: NavItem[] = [
-  { icon: Layers, labelKey: 'nav.narratives', path: '/narratives' },
-  { icon: GitBranch, labelKey: 'nav.devActivity', path: '/dev-activity' },
-];
+// Legacy items removed — narratives & devActivity are now merged into
+// SocialIntelligence (/social-intelligence) and OnChain (/on-chain)
 
 // ---------------------------------------------------------------------------
 // Favorites persistence

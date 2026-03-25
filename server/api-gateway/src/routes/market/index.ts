@@ -7,6 +7,7 @@ import derivativesRouter from './derivatives.js';
 import sentimentRouter from './sentiment.js';
 import onchainRouter from './onchain.js';
 import advancedRouter from './advanced.js';
+import arbitrageRouter from './arbitrage.js';
 
 const router = Router();
 
@@ -19,5 +20,6 @@ router.use('/', derivativesRouter); // /funding-rates, /open-interest, /liquidat
 router.use('/', sentimentRouter);   // /fear-greed, /correlation, /narratives, /breadth
 router.use('/', onchainRouter);     // /defi, /dev-activity, /network-metrics/:symbol, /btc-models, /multi-asset
 router.use('/', advancedRouter);    // /regime, /regime/scores, /confluence/:symbol, /seasonality/:symbol, /profile/:symbol
+router.use('/', arbitrageRouter);   // /arbitrage/cross-exchange, /arbitrage/funding-rate, /arbitrage/triangular
 
 export default router;

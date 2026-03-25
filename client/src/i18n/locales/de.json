@@ -54,7 +54,14 @@
     "networkMetrics": "Netzwerk",
     "renko": "Renko",
     "btcModels": "BTC-Modelle",
-    "regime": "Marktregime"
+    "regime": "Marktregime",
+    "arbitrage": "Arbitrage Scanner",
+    "backtester": "Strategie-Backtester",
+    "gridBot": "Grid Bot",
+    "advancedPatterns": "Erweiterte Muster",
+    "advancedCharts": "Erweiterte Charts",
+    "onChain": "On-Chain Analytik",
+    "socialIntelligence": "Social Intelligence"
   },
   "navGroup": {
     "favorites": "Favoriten",

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { connectSocket, getSocket, disconnectSocket } from '@/services/socket';
+import { connectSocket, getSocket, disconnectSocket, subscribeAlerts } from '@/services/socket';
 import { useMarketStore } from '@/stores/market';
 import { useToastStore } from '@/stores/toast';
 import { useNotificationStore } from '@/stores/notifications';
+import { useAuthStore } from '@/stores/auth';
 import type { TickerData } from '@/services/api';
 
 /**
@@ -16,6 +17,7 @@ export function useWebSocket() {
   const updateTicker = useMarketStore((s) => s.updateTicker);
   const addToast = useToastStore((s) => s.addToast);
   const addNotification = useNotificationStore((s) => s.addNotification);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const initialized = useRef(false);
 
   // Pending ticker updates collected within the current batch window
@@ -84,9 +86,27 @@ export function useWebSocket() {
       }
     });
 
+    // Real-time alert notifications
+    socket.on('alert:triggered', (data: { alertName?: string; alertId?: string; snapshot?: Record<string, unknown> }) => {
+      if (data?.alertName) {
+        addToast(`Alert triggered: ${data.alertName}`, 'info');
+        addNotification(
+          `Alert: ${data.alertName}`,
+          data.snapshot ? `Condition met — ${JSON.stringify(data.snapshot).slice(0, 100)}` : 'Alert condition triggered',
+          'alert'
+        );
+      }
+    });
+
+    // Subscribe to user-specific alert room if authenticated
+    if (isAuthenticated) {
+      subscribeAlerts();
+    }
+
     return () => {
       socket.off('ticker:update');
       socket.off('signal:new');
+      socket.off('alert:triggered');
       disconnectSocket();
       initialized.current = false;
 
@@ -97,5 +117,5 @@ export function useWebSocket() {
       }
       pendingUpdates.current.clear();
     };
-  }, [updateTicker, addToast, addNotification, enqueueTicker]);
+  }, [updateTicker, addToast, addNotification, enqueueTicker, isAuthenticated]);
 }

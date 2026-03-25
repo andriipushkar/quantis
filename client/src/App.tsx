@@ -69,6 +69,13 @@ const DeFi = lazy(() => import('@/pages/DeFi'));
 const MarketProfile = lazy(() => import('@/pages/MarketProfile'));
 const MarketRegime = lazy(() => import('@/pages/MarketRegime'));
 const APIDocs = lazy(() => import('@/pages/APIDocs'));
+const ArbitrageScanner = lazy(() => import('@/pages/ArbitrageScanner'));
+const StrategyBacktester = lazy(() => import('@/pages/StrategyBacktester'));
+const GridBot = lazy(() => import('@/pages/GridBot'));
+const AdvancedPatterns = lazy(() => import('@/pages/AdvancedPatterns'));
+const AdvancedCharts = lazy(() => import('@/pages/AdvancedCharts'));
+const OnChain = lazy(() => import('@/pages/OnChain'));
+const SocialIntelligence = lazy(() => import('@/pages/SocialIntelligence'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
 const PageLoader: React.FC = () => (
@@ -193,6 +200,13 @@ const App: React.FC = () => {
             <Route path="/defi" element={<DeFi />} />
             <Route path="/market-profile" element={<MarketProfile />} />
             <Route path="/regime" element={<MarketRegime />} />
+            <Route path="/arbitrage" element={<ArbitrageScanner />} />
+            <Route path="/backtester" element={<StrategyBacktester />} />
+            <Route path="/grid-bot" element={<GridBot />} />
+            <Route path="/advanced-patterns" element={<AdvancedPatterns />} />
+            <Route path="/advanced-charts" element={<AdvancedCharts />} />
+            <Route path="/on-chain" element={<OnChain />} />
+            <Route path="/social-intelligence" element={<SocialIntelligence />} />
           </Route>
 
           {/* Catch-all 404 */}

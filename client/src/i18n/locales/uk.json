@@ -54,7 +54,14 @@
     "networkMetrics": "Метрики мережі",
     "renko": "Ренко",
     "btcModels": "Моделі BTC",
-    "regime": "Режим ринку"
+    "regime": "Режим ринку",
+    "arbitrage": "Арбітраж Сканер",
+    "backtester": "Бектестер стратегій",
+    "gridBot": "Grid Бот",
+    "advancedPatterns": "Просунуті патерни",
+    "advancedCharts": "Просунуті графіки",
+    "onChain": "On-Chain аналітика",
+    "socialIntelligence": "Соціальна аналітика"
   },
   "navGroup": {
     "favorites": "Обране",

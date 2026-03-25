@@ -38,6 +38,7 @@ import tokenomicsRoutes from './routes/tokenomics.js';
 import docsRoutes from './routes/docs.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import { applySocketRateLimiting, canSubscribe, releaseSubscriptions } from './middleware/socketRateLimiter.js';
+import jwt from 'jsonwebtoken';
 import { sanitizeResponse, validateContentType, preventParamPollution } from './middleware/security.js';
 import { csrfProtection } from './middleware/csrf.js';
 import Redis from 'ioredis';
@@ -120,8 +121,26 @@ const io = new SocketIOServer(server, {
 // Apply WebSocket rate limiting (per-IP connection limits, event throttling)
 applySocketRateLimiting(io);
 
+// Socket.IO auth middleware — extract userId from JWT token
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (!token) {
+    // Allow unauthenticated connections (guest users get ticker data)
+    return next();
+  }
+  try {
+    const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET) as { userId?: string; id?: string };
+    socket.data.userId = decoded.userId ?? decoded.id;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  } catch (_err) {
+    // Invalid token — still allow connection but without userId
+    logger.debug('Socket auth: invalid JWT token', { id: socket.id });
+  }
+  next();
+});
+
 io.on('connection', (socket) => {
-  logger.info('Socket.IO client connected', { id: socket.id });
+  logger.info('Socket.IO client connected', { id: socket.id, userId: socket.data.userId });
 
   // Join rooms for specific pairs (with subscription quota check)
   socket.on('subscribe:ticker', (symbols: string[]) => {
@@ -148,6 +167,17 @@ io.on('connection', (socket) => {
     const safeSymbols = symbols.slice(0, 50);
     safeSymbols.forEach((s) => socket.leave(`ticker:${s}`));
     releaseSubscriptions(socket, safeSymbols.length);
+  });
+
+  // Join user-specific room for alert notifications
+  socket.on('subscribe:alerts', () => {
+    const userId = socket.data.userId;
+    if (!userId) {
+      socket.emit('error', { message: 'Authentication required for alert subscriptions' });
+      return;
+    }
+    socket.join(`user:${userId}`);
+    logger.debug('Socket subscribed to alerts', { id: socket.id, userId });
   });
 
   socket.on('disconnect', (reason) => {
