@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { BarChart2, Box, BarChart, BarChart4, RefreshCw, TrendingUp, TrendingDown, Info } from 'lucide-react';
+import { BarChart2, BarChart, TrendingUp, TrendingDown, Info } from 'lucide-react';
 import { getMarketProfile, type MarketProfileData } from '@/services/api';
 import { cn } from '@/utils/cn';
 

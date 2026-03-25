@@ -880,7 +880,7 @@ router.get('/wyckoff/:symbol', async (req: Request, res: Response) => {
     const overallHigh = Math.max(...highs);
     const overallLow = Math.min(...lows);
     const range = overallHigh - overallLow;
-    const currentPrice = closes[closes.length - 1];
+    const _currentPrice = closes[closes.length - 1];
 
     // Average volume
     const avgVolume = volumes.reduce((a: number, b: number) => a + b, 0) / volumes.length;
@@ -943,7 +943,7 @@ router.get('/wyckoff/:symbol', async (req: Request, res: Response) => {
     let tradingImplication: string;
 
     // Check if price is ranging (within 80% of range middle)
-    const midRange = (overallHigh + overallLow) / 2;
+    const _midRange = (overallHigh + overallLow) / 2;
     const recentCloses = closes.slice(-20);
     const recentHigh = Math.max(...recentCloses);
     const recentLow = Math.min(...recentCloses);
@@ -1220,7 +1220,7 @@ function resolveIndicator(
 }
 
 /** Pad a shorter indicator series with NaN so its indices align with the candle array. */
-function paddedSeries(series: number[], totalLen: number, minDataPoints: number): number[] {
+function paddedSeries(series: number[], totalLen: number, _minDataPoints: number): number[] {
   const padLen = totalLen - series.length;
   const padded = new Array(padLen).fill(NaN);
   return padded.concat(series);
@@ -1357,7 +1357,7 @@ router.post('/backtest', async (req: Request, res: Response) => {
         }
       } else {
         // Check stop loss / take profit
-        const pnlPct = ((price - entryPrice) / entryPrice) * 100;
+        const _pnlPct = ((price - entryPrice) / entryPrice) * 100;
 
         let shouldExit = false;
         let exitPrice = price;

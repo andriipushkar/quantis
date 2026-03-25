@@ -1,7 +1,6 @@
 import { Pool } from 'pg';
 import Redis from 'ioredis';
 import logger from '../config/logger.js';
-import type { NormalizedKline } from '../normalizers/index.js';
 
 export abstract class BaseCollector {
   protected db: Pool;

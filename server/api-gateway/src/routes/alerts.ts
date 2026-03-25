@@ -7,11 +7,6 @@ import { validateBody, alertCreateSchema } from '../validators/index.js';
 
 const router = Router();
 
-const createAlertSchema = z.object({
-  name: z.string().min(1).max(100),
-  conditions: z.record(z.unknown()),
-  channels: z.array(z.enum(['email', 'push', 'webhook', 'telegram'])).min(1),
-});
 
 const updateAlertSchema = z.object({
   name: z.string().min(1).max(100).optional(),

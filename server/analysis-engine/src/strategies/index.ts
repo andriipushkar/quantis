@@ -586,11 +586,11 @@ export class StrategyEngine {
     // Previous Tenkan/Kijun for crossover detection
     const prevTenkanHighs = highs.slice(-(tenkanPeriod + 1), -1);
     const prevTenkanLows = lows.slice(-(tenkanPeriod + 1), -1);
-    const prevTenkan = (Math.max(...prevTenkanHighs) + Math.min(...prevTenkanLows)) / 2;
+    const _prevTenkan = (Math.max(...prevTenkanHighs) + Math.min(...prevTenkanLows)) / 2;
 
     const prevKijunHighs = highs.slice(-(kijunPeriod + 1), -1);
     const prevKijunLows = lows.slice(-(kijunPeriod + 1), -1);
-    const prevKijun = (Math.max(...prevKijunHighs) + Math.min(...prevKijunLows)) / 2;
+    const _prevKijun = (Math.max(...prevKijunHighs) + Math.min(...prevKijunLows)) / 2;
 
     // BUY: price above cloud + Tenkan > Kijun (or Tenkan crossing above Kijun)
     const aboveCloud = curPrice > cloudTop;

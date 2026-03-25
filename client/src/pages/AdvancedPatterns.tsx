@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Eye, RefreshCw, Waves, Hexagon, Layers, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Eye, Hexagon, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
 // =============================================================================

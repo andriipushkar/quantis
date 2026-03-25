@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Wallet,
@@ -7,7 +7,6 @@ import {
   Link as LinkIcon,
   Shield,
   Eye,
-  ArrowUpRight,
   Download,
   RefreshCw,
   Target,
@@ -230,12 +229,6 @@ const EquityCurveChart: React.FC<{ data: { date: string; equity: number }[] }> =
 /* ── Helpers ──────────────────────────────────────────────────── */
 function fmt(n: number): string {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function fmtCompact(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(2)}K`;
-  return `$${fmt(n)}`;
 }
 
 function getToken(): string | null {
@@ -480,7 +473,7 @@ const PerformanceAnalytics: React.FC<{
 
 /* ── Portfolio Page ───────────────────────────────────────────── */
 const Portfolio: React.FC = () => {
-  const { t } = useTranslation();
+  const { t: _t } = useTranslation();
   const storeTickers = useMarketStore((s) => s.tickers);
   const updateTickers = useMarketStore((s) => s.updateTickers);
   const [loading, setLoading] = useState(true);

@@ -7,7 +7,6 @@ import {
   Flame,
   Lock,
   Zap,
-  BookOpen,
   LineChart,
   Bell,
   CircleDollarSign,
@@ -20,7 +19,7 @@ import { Badge } from '@/components/common/Badge';
 import { useAuthStore } from '@/stores/auth';
 import { cn } from '@/utils/cn';
 
-interface LevelInfo {
+interface _LevelInfo {
   level: number;
   name: string;
   currentXP: number;

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Users, Star, TrendingUp, TrendingDown, Shield, X, AlertTriangle, Info } from 'lucide-react';
+import { Users, Shield, X, AlertTriangle, Info } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { useAuthStore } from '@/stores/auth';
 

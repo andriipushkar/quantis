@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
 import {
   Code,
   Play,
@@ -10,7 +10,6 @@ import {
   FileCode,
   Sparkles,
 } from 'lucide-react';
-import { cn } from '@/utils/cn';
 import { useToastStore } from '@/stores/toast';
 
 /* ------------------------------------------------------------------ */
@@ -214,7 +213,7 @@ function highlightLine(text: string): React.ReactNode[] {
   let key = 0;
 
   while ((match = regex.exec(text)) !== null) {
-    const [full, comment, str, decorator, num, word, other] = match;
+    const [_full, comment, str, decorator, num, word, other] = match;
     if (comment) {
       tokens.push(<span key={key++} className="text-muted-foreground/60 italic">{comment}</span>);
     } else if (str) {

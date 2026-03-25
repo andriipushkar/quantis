@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, ExternalLink } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
 interface Endpoint {

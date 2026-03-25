@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Wallet2, Plus, Trash2, ChevronDown, ExternalLink, Copy, Info } from 'lucide-react';
+import { Wallet2, Plus, Trash2, ChevronDown, Copy, Info } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { useAuthStore } from '@/stores/auth';
 

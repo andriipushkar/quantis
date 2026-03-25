@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Trophy, Medal, TrendingUp, Target, Info } from 'lucide-react';
+import { Trophy, TrendingUp, Target, Info } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
 interface PaperTrader {

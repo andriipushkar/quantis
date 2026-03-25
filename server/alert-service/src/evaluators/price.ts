@@ -1,4 +1,4 @@
-import pool, { query } from '../config/database.js';
+import { query } from '../config/database.js';
 import logger from '../config/logger.js';
 import { alertDeliveryQueue } from '../index.js';
 

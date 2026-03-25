@@ -76,7 +76,7 @@ const FearGreedGauge: React.FC = React.memo(() => {
 
     // Draw arc background segments: red -> yellow -> green
     const startAngle = Math.PI;
-    const endAngle = 2 * Math.PI;
+    const _endAngle = 2 * Math.PI;
 
     // Gradient arc: red (fear) to yellow (neutral) to green (greed)
     const segments = [
@@ -290,10 +290,6 @@ function getRegimeColor(regime: string): string {
     case 'low_volatility': return 'text-purple-400 bg-purple-500/15';
     default: return 'text-muted-foreground bg-secondary';
   }
-}
-
-function formatRegimeLabel(regime: string): string {
-  return regime.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
 function getScoreColor(score: number): string {

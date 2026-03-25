@@ -6,7 +6,7 @@ import { RSIChart } from '@/components/charts/RSIChart';
 import { useMarketStore, TIMEFRAMES } from '@/stores/market';
 import { getOHLCV, getPairs, type TradingPair } from '@/services/api';
 import { subscribeOHLCV, unsubscribeOHLCV, subscribeTicker, unsubscribeTicker, getSocket } from '@/services/socket';
-import { Activity, ChevronDown, BarChart3 } from 'lucide-react';
+import { Activity, ChevronDown } from 'lucide-react';
 import { DrawingToolbar } from '@/components/charts/DrawingToolbar';
 
 interface Indicators {

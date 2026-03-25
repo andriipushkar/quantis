@@ -1,7 +1,6 @@
 import { query } from '../config/database.js';
 import { publisherClient } from '../config/redis.js';
 import logger from '../config/logger.js';
-import calculator from '../indicators/calculator.js';
 import { calculateAllIndicators, IndicatorResults } from '../indicators/index.js';
 
 export interface Signal {

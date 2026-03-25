@@ -83,7 +83,7 @@ const Pricing: React.FC = () => {
     return null;
   };
 
-  const handleUpgrade = (tierId: string) => {
+  const handleUpgrade = (_tierId: string) => {
     if (!isAuthenticated) {
       navigate('/register');
       return;

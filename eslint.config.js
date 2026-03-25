@@ -16,7 +16,7 @@ export default tseslint.config(
       },
     },
     rules: {
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unsafe-function-type': 'warn',
       '@typescript-eslint/no-require-imports': 'warn',
@@ -24,6 +24,17 @@ export default tseslint.config(
       'no-loss-of-precision': 'warn',
       'no-constant-binary-expression': 'warn',
       'prefer-const': 'warn',
+    },
+  },
+  // Relax rules in test files
+  {
+    files: ['**/__tests__/**', '**/*.test.*', '**/*.spec.*'],
+    rules: {
+      '@typescript-eslint/no-unused-vars': 'off',
+      '@typescript-eslint/no-unsafe-function-type': 'off',
+      '@typescript-eslint/no-require-imports': 'off',
+      'no-loss-of-precision': 'off',
+      'prefer-const': 'off',
     },
   },
   {

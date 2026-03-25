@@ -7,7 +7,6 @@ import {
   ATR,
   Stochastic,
   OBV,
-  VWAP,
   ADX,
   PSAR,
   IchimokuCloud,
@@ -1324,7 +1323,7 @@ export class IndicatorCalculator {
     let prevUpperBand = 0;
     let prevLowerBand = 0;
     let prevSupertrend = 0;
-    let prevDirection = 1;
+    let _prevDirection = 1;
 
     for (let i = 0; i < atrValues.length; i++) {
       const idx = i + offset;
@@ -1348,7 +1347,6 @@ export class IndicatorCalculator {
       }
 
       let dir: number;
-      let st: number;
 
       if (i === 0) {
         dir = closes[idx] > upperBand ? 1 : -1;
@@ -1358,7 +1356,7 @@ export class IndicatorCalculator {
         dir = closes[idx] < lowerBand ? -1 : 1;
       }
 
-      st = dir === 1 ? lowerBand : upperBand;
+      const st = dir === 1 ? lowerBand : upperBand;
 
       supertrend.push(st);
       direction.push(dir);
@@ -1366,7 +1364,7 @@ export class IndicatorCalculator {
       prevUpperBand = upperBand;
       prevLowerBand = lowerBand;
       prevSupertrend = st;
-      prevDirection = dir;
+      _prevDirection = dir;
     }
 
     return { supertrend, direction };

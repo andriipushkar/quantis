@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Repeat, Plus, Trash2, TrendingUp, DollarSign, BarChart3 } from 'lucide-react';
+import { Repeat, Plus, Trash2, BarChart3 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
 function getToken(): string | null {

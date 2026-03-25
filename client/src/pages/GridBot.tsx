@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Grid3x3, Plus, Trash2, TrendingUp, BarChart3, RefreshCw, Info } from 'lucide-react';
+import { Grid3x3, Plus, Trash2, BarChart3, RefreshCw, Info } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
 function getToken(): string | null {

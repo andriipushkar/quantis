@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Network, GitBranch, Star, AlertTriangle, Users, Code, Info, Activity, ArrowRightLeft, BarChart3 } from 'lucide-react';
+import { Network, Star, AlertTriangle, Users, Code, Info, Activity, ArrowRightLeft, BarChart3 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
 // =============================================================================

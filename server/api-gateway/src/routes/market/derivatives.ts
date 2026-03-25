@@ -66,7 +66,7 @@ interface BybitOIItem {
   timestamp: string;
 }
 
-interface BybitOIResponse {
+interface _BybitOIResponse {
   retCode: number;
   result: {
     symbol: string;

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { ShieldAlert, AlertTriangle, ArrowDown, ArrowUp } from 'lucide-react';
+import { ShieldAlert, AlertTriangle } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
 function getToken(): string | null {

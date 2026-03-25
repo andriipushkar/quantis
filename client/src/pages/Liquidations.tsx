@@ -87,7 +87,7 @@ const Liquidations: React.FC = () => {
     const barHeight = Math.max(16, Math.floor((height - 40) / levels.length) - 2);
     const centerX = width / 2;
     const maxBarWidth = centerX - 100;
-    const labelWidth = 90;
+    const _labelWidth = 90;
 
     // Title labels
     ctx.font = '12px system-ui, sans-serif';

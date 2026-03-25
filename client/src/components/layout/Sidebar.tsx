@@ -101,7 +101,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
     if (activeGroupId && !expandedGroups.has(activeGroupId)) {
       setExpandedGroups((prev) => new Set([...prev, activeGroupId]));
     }
-    // eslint-disable-next-line
+     
   }, [activeGroupId]);
 
   const toggleGroup = useCallback((groupId: string) => {

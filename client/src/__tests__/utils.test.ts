@@ -25,7 +25,7 @@ describe('cn() utility', () => {
   });
 
   test('handles conditional classes (false/undefined/null are excluded)', () => {
-    const result = cn('base', false && 'hidden', undefined, null, 'end');
+    const result = cn('base', false, undefined, null, 'end');
     expect(result).toContain('base');
     expect(result).toContain('end');
     expect(result).not.toContain('hidden');

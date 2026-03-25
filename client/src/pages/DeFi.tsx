@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Coins, ArrowUp, ArrowDown, Filter, TrendingUp } from 'lucide-react';
-import { getDeFiOverview, type DeFiProtocol, type DeFiData } from '@/services/api';
+import { getDeFiOverview, type DeFiData } from '@/services/api';
 import { cn } from '@/utils/cn';
 
 function formatTvl(value: number): string {

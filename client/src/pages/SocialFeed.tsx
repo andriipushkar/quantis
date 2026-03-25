@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { MessageSquare, Heart, TrendingUp, TrendingDown, Minus, Send } from 'lucide-react';
+import { MessageSquare, Heart, Minus, Send, TrendingUp, TrendingDown } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { useAuthStore } from '@/stores/auth';
 import { useNavigate } from 'react-router-dom';

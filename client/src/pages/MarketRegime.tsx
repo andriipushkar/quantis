@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/utils/cn';
 import { getRegimeScores, getMarketRegime, type RegimeScoreItem, type MarketRegimeData } from '@/services/api';
-import { Activity, TrendingUp, TrendingDown, Minus, ArrowUpDown, BarChart3, Info, ChevronDown } from 'lucide-react';
+import { Activity, TrendingUp, TrendingDown, Minus, ArrowUpDown, Info, ChevronDown } from 'lucide-react';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -228,7 +228,7 @@ const MarketRegime: React.FC = () => {
           setBtcRegime(btcData);
           setLoading(false);
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
           setError('Failed to load regime data');
           setLoading(false);
