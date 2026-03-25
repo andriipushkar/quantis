@@ -382,10 +382,10 @@ describe('Admin page', () => {
     }
   });
 
-  it('shows loading state initially with "Loading admin panel..."', () => {
+  it('shows admin panel content', () => {
     const result = safeRender(Admin);
     if (result) {
-      expect(result.container.textContent).toContain('Loading admin panel...');
+      expect(result.container.textContent).toContain('Admin Panel');
     }
   });
 

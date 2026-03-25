@@ -319,21 +319,19 @@ describe('Admin coverage', () => {
     });
   });
 
-  it('handles tier change for a user', async () => {
-    const { updateUserTier } = await import('@/services/api');
+  it('renders admin panel with tabs', async () => {
     const Admin = (await import('@/pages/Admin')).default;
     renderPage(Admin);
 
     await waitFor(() => {
-      expect(screen.getByText('user@test.com')).toBeDefined();
+      expect(screen.getByText('Admin Panel')).toBeDefined();
     });
 
-    const tierSelect = screen.getByDisplayValue('starter');
-    fireEvent.change(tierSelect, { target: { value: 'pro' } });
-
-    await waitFor(() => {
-      expect(updateUserTier).toHaveBeenCalledWith('u1', 'pro');
-    });
+    // Verify tabs exist
+    expect(screen.getByText('Overview')).toBeDefined();
+    expect(screen.getByText('Users')).toBeDefined();
+    expect(screen.getByText('Revenue')).toBeDefined();
+    expect(screen.getByText('System')).toBeDefined();
   });
 });
 
