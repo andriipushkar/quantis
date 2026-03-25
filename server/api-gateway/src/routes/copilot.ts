@@ -254,4 +254,216 @@ function generateMockAnalysis(ctx: {
   return parts.join(' ');
 }
 
+// Rate limit for morning brief: 1 per hour per user (separate key)
+async function checkMorningBriefRateLimit(userId: string): Promise<boolean> {
+  const key = `copilot:morning-brief:ratelimit:${userId}`;
+  const count = await redis.incr(key);
+  if (count === 1) {
+    await redis.expire(key, 3600); // 1 hour TTL
+  }
+  return count <= 1;
+}
+
+// GET /morning-brief — AI daily market summary
+router.get('/morning-brief', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+
+    // Rate limit check
+    const allowed = await checkMorningBriefRateLimit(userId);
+    if (!allowed) {
+      res.status(429).json({ success: false, error: 'Rate limit exceeded. Maximum 1 morning brief per hour.' });
+      return;
+    }
+
+    // Check Redis cache (30 minutes per user)
+    const cacheKey = `copilot:morning-brief:${userId}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      res.json(JSON.parse(cached));
+      return;
+    }
+
+    // Gather comprehensive market context
+    const allTickers = await getAllTickers();
+
+    // Top 5 gainers and losers
+    const tickerEntries = Array.from(allTickers.entries())
+      .filter(([, t]) => t.change24h !== undefined && t.price !== undefined)
+      .map(([symbol, t]) => ({ symbol, price: t.price ?? 0, change24h: t.change24h ?? 0 }));
+
+    const sortedByChange = [...tickerEntries].sort((a, b) => b.change24h - a.change24h);
+    const gainers = sortedByChange.slice(0, 5);
+    const losers = sortedByChange.slice(-5).reverse();
+
+    // Overall market sentiment (Fear & Greed)
+    let sentiment = 50;
+    if (tickerEntries.length > 0) {
+      const changes = tickerEntries.map((t) => t.change24h);
+      const bullishPct = (changes.filter((c) => c > 0).length / changes.length) * 100;
+      sentiment = Math.max(0, Math.min(100, Math.round(bullishPct)));
+    }
+    const sentimentLabel = sentiment < 20 ? 'Extreme Fear' : sentiment < 40 ? 'Fear' : sentiment < 60 ? 'Neutral' : sentiment < 80 ? 'Greed' : 'Extreme Greed';
+
+    // BTC and ETH current price + 24h change
+    const btcTicker = await getTickerBySymbol('BTCUSDT');
+    const ethTicker = await getTickerBySymbol('ETHUSDT');
+    const btcPrice = btcTicker ? { price: btcTicker.price ?? 0, change24h: btcTicker.change24h ?? 0 } : { price: 0, change24h: 0 };
+    const ethPrice = ethTicker ? { price: ethTicker.price ?? 0, change24h: ethTicker.change24h ?? 0 } : { price: 0, change24h: 0 };
+
+    // Top 3 latest signals from DB
+    const signalsResult = await query(
+      `SELECT s.type, s.strategy, s.strength, s.confidence, s.reasoning, tp.symbol
+       FROM signals s
+       JOIN trading_pairs tp ON tp.id = s.pair_id
+       ORDER BY s.created_at DESC
+       LIMIT 3`,
+      []
+    );
+    const latestSignals = signalsResult.rows;
+
+    const contextData = {
+      gainers,
+      losers,
+      sentiment: { score: sentiment, label: sentimentLabel },
+      btcPrice,
+      ethPrice,
+      latestSignals,
+    };
+
+    let brief: string;
+
+    if (env.ANTHROPIC_API_KEY) {
+      brief = await claudeBreaker.call(
+        async () => {
+          const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': env.ANTHROPIC_API_KEY!,
+              'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify({
+              model: env.ANTHROPIC_MODEL,
+              max_tokens: env.COPILOT_MAX_TOKENS,
+              system: `You are a professional crypto market analyst for Quantis platform. Generate a concise morning brief that includes:
+1. Market overview (1-2 sentences summarizing current conditions)
+2. Top 3 trade ideas with specific entry/exit levels based on the data
+3. Key levels to watch for BTC and ETH (support/resistance)
+4. Risk assessment (1-2 sentences on current market risk)
+Be concise and actionable. Never give financial advice — frame as analysis. Use bullet points for clarity.`,
+              messages: [
+                {
+                  role: 'user',
+                  content: `Generate a morning market brief based on this data:\n\n${JSON.stringify(contextData, null, 2)}`,
+                },
+              ],
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error(`Claude API ${response.status}`);
+          }
+
+          const data = (await response.json()) as { content?: Array<{ text?: string }> };
+          return data.content?.[0]?.text || 'Unable to generate morning brief at this time.';
+        },
+        () => {
+          logger.warn('Claude API circuit breaker fallback — using mock morning brief');
+          return generateMockMorningBrief(contextData);
+        },
+      );
+    } else {
+      brief = generateMockMorningBrief(contextData);
+    }
+
+    const responseData = {
+      success: true as const,
+      data: {
+        brief,
+        generatedAt: new Date().toISOString(),
+        context: {
+          gainers,
+          losers,
+          sentiment: contextData.sentiment,
+          btcPrice,
+          ethPrice,
+        },
+      },
+    };
+
+    // Cache for 30 minutes
+    await redis.setex(cacheKey, 1800, JSON.stringify(responseData));
+
+    res.json(responseData);
+  } catch (err) {
+    logger.error('Morning brief error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Failed to generate morning brief' });
+  }
+});
+
+function generateMockMorningBrief(ctx: {
+  gainers: Array<{ symbol: string; price: number; change24h: number }>;
+  losers: Array<{ symbol: string; price: number; change24h: number }>;
+  sentiment: { score: number; label: string };
+  btcPrice: { price: number; change24h: number };
+  ethPrice: { price: number; change24h: number };
+  latestSignals: Array<{ type: string; strategy: string; strength: string; confidence: number; reasoning: string; symbol: string }>;
+}): string {
+  const parts: string[] = [];
+
+  // Market overview
+  const btcDir = ctx.btcPrice.change24h >= 0 ? 'up' : 'down';
+  const ethDir = ctx.ethPrice.change24h >= 0 ? 'up' : 'down';
+  parts.push(`## Market Overview`);
+  parts.push(`The crypto market is showing ${ctx.sentiment.label.toLowerCase()} sentiment (${ctx.sentiment.score}/100). BTC is ${btcDir} ${Math.abs(ctx.btcPrice.change24h).toFixed(2)}% at $${ctx.btcPrice.price.toLocaleString()} and ETH is ${ethDir} ${Math.abs(ctx.ethPrice.change24h).toFixed(2)}% at $${ctx.ethPrice.price.toLocaleString()}.`);
+
+  // Top movers
+  if (ctx.gainers.length > 0) {
+    parts.push(`\n## Top Gainers`);
+    ctx.gainers.forEach((g) => parts.push(`- ${g.symbol}: +${g.change24h.toFixed(2)}% ($${g.price.toLocaleString()})`));
+  }
+  if (ctx.losers.length > 0) {
+    parts.push(`\n## Top Losers`);
+    ctx.losers.forEach((l) => parts.push(`- ${l.symbol}: ${l.change24h.toFixed(2)}% ($${l.price.toLocaleString()})`));
+  }
+
+  // Trade ideas from signals
+  parts.push(`\n## Trade Ideas`);
+  if (ctx.latestSignals.length > 0) {
+    ctx.latestSignals.forEach((sig, i) => {
+      parts.push(`${i + 1}. **${sig.symbol}** — ${sig.type.toUpperCase()} signal (${sig.strategy}, ${sig.strength} strength, ${sig.confidence}% confidence)`);
+    });
+  } else {
+    parts.push('No active signals at this time. Consider watching BTC and ETH key levels.');
+  }
+
+  // Key levels
+  parts.push(`\n## Key Levels to Watch`);
+  if (ctx.btcPrice.price > 0) {
+    const btcSupport = Math.round(ctx.btcPrice.price * 0.97);
+    const btcResistance = Math.round(ctx.btcPrice.price * 1.03);
+    parts.push(`- **BTC:** Support $${btcSupport.toLocaleString()} | Resistance $${btcResistance.toLocaleString()}`);
+  }
+  if (ctx.ethPrice.price > 0) {
+    const ethSupport = Math.round(ctx.ethPrice.price * 0.97);
+    const ethResistance = Math.round(ctx.ethPrice.price * 1.03);
+    parts.push(`- **ETH:** Support $${ethSupport.toLocaleString()} | Resistance $${ethResistance.toLocaleString()}`);
+  }
+
+  // Risk assessment
+  parts.push(`\n## Risk Assessment`);
+  if (ctx.sentiment.score < 30) {
+    parts.push('Market fear is elevated — consider smaller position sizes and tighter stop losses. High volatility expected.');
+  } else if (ctx.sentiment.score > 70) {
+    parts.push('Market greed is high — be cautious of potential reversals. Consider taking partial profits on existing positions.');
+  } else {
+    parts.push('Market conditions are relatively balanced. Standard position sizing applies. Watch for breakout catalysts.');
+  }
+
+  parts.push('\n*Disclaimer: This is not financial advice. Always do your own research.*');
+
+  return parts.join('\n');
+}
+
 export default router;

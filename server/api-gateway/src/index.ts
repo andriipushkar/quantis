@@ -36,6 +36,7 @@ import emailRoutes from './routes/emails.js';
 import influencerRoutes from './routes/influencers.js';
 import tokenomicsRoutes from './routes/tokenomics.js';
 import docsRoutes from './routes/docs.js';
+import portfolioAnalyticsRouter from './routes/portfolio-analytics.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import { applySocketRateLimiting, canSubscribe, releaseSubscriptions } from './middleware/socketRateLimiter.js';
 import jwt from 'jsonwebtoken';
@@ -103,6 +104,7 @@ app.use('/api/v1/emails', emailRoutes);
 app.use('/api/v1/influencers', influencerRoutes);
 app.use('/api/v1/tokenomics', tokenomicsRoutes);
 app.use('/api/v1/docs', docsRoutes);
+app.use('/api/v1/portfolio', portfolioAnalyticsRouter);
 
 // Health check
 app.get('/health', (_req, res) => {

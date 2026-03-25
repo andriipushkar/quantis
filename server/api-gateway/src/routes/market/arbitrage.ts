@@ -4,6 +4,7 @@ import redis from '../../config/redis.js';
 import logger from '../../config/logger.js';
 import { getAllTickers } from '../../utils/ticker-cache.js';
 import { CircuitBreaker } from '@quantis/shared';
+import { authenticate, AuthenticatedRequest } from '../../middleware/auth.js';
 
 const router = Router();
 
@@ -24,6 +25,14 @@ const bybitBreaker = new CircuitBreaker('bybit-arb', {
   },
 });
 
+const dexScreenerBreaker = new CircuitBreaker('dexscreener-arb', {
+  failureThreshold: 3,
+  resetTimeout: 60_000,
+  onStateChange: (name, from, to) => {
+    logger.warn(`Circuit breaker "${name}" transitioned ${from} → ${to}`);
+  },
+});
+
 // ── Types ───────────────────────────────────────────────────────────
 interface CrossExchangeOpportunity {
   symbol: string;
@@ -34,6 +43,11 @@ interface CrossExchangeOpportunity {
   spread_pct: number;
   spread_usd: number;
   estimated_profit_1k: number;
+  buy_fee_pct: number;
+  sell_fee_pct: number;
+  total_fees_pct: number;
+  net_profit_pct: number;
+  net_profit_1k: number;
   volume_24h_min: number;
   timestamp: number;
 }
@@ -63,6 +77,20 @@ interface TriangularOpportunity {
   timestamp: number;
 }
 
+interface DexCexOpportunity {
+  symbol: string;
+  dex_name: string;
+  dex_price: number;
+  cex_exchange: string;
+  cex_price: number;
+  spread_pct: number;
+  direction: 'buy_dex_sell_cex' | 'buy_cex_sell_dex';
+  dex_liquidity: number;
+  estimated_profit_1k: number;
+  net_profit_1k: number;
+  timestamp: number;
+}
+
 interface BinancePremiumIndex {
   symbol: string;
   lastFundingRate: string;
@@ -83,11 +111,28 @@ interface BybitTickerResponse {
   };
 }
 
+interface DexScreenerPair {
+  dexId: string;
+  pairAddress: string;
+  baseToken: { symbol: string; name: string };
+  quoteToken: { symbol: string };
+  priceUsd: string;
+  liquidity: { usd: number };
+  volume: { h24: number };
+  fdv: number;
+}
+
+interface DexScreenerResponse {
+  pairs: DexScreenerPair[] | null;
+}
+
 // ── Constants ───────────────────────────────────────────────────────
 const BINANCE_FUTURES_BASE = 'https://fapi.binance.com/fapi/v1';
 const BYBIT_BASE = 'https://api-testnet.bybit.com/v5/market';
+const DEXSCREENER_BASE = 'https://api.dexscreener.com/latest/dex';
 
 const FUNDING_ARB_CACHE_TTL = 60;  // 60 seconds
+const DEX_CEX_CACHE_TTL = 30;      // 30 seconds
 const CROSS_EXCHANGE_MIN_SPREAD = 0.05; // 0.05%
 const CROSS_EXCHANGE_LIMIT = 50;
 const TRIANGULAR_MIN_PROFIT = 0.01; // 0.01%
@@ -96,6 +141,30 @@ const SUPPORTED_EXCHANGES = ['binance', 'bybit', 'okx'];
 
 // Triangular paths: intermediate coins to test
 const TRIANGULAR_INTERMEDIATES = ['BTC', 'ETH', 'SOL', 'BNB', 'XRP'];
+
+// Exchange taker fees (as decimal, e.g. 0.001 = 0.1%)
+const EXCHANGE_TAKER_FEES: Record<string, number> = {
+  binance: 0.001,  // 0.1%
+  bybit: 0.001,    // 0.1%
+  okx: 0.0008,     // 0.08%
+};
+
+// Default DEX swap fee assumption (Uniswap V2 = 0.3%, V3 pools range 0.05%-0.3%)
+const DEX_SWAP_FEE_PCT = 0.3; // 0.3%
+
+// Token addresses for DEX-CEX comparison (Ethereum mainnet)
+const TOKEN_ADDRESSES: Record<string, string> = {
+  'ETHUSDT': '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // WETH
+  'UNIUSDT': '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984', // UNI
+  'LINKUSDT': '0x514910771AF9Ca656af840dff83E8264EcF986CA', // LINK
+  'AAVEUSDT': '0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9', // AAVE
+  'MKRUSDT': '0x9f8F72aA9304c8B593d555F12eF6589cC3A579A2', // MKR
+  'SUSHIUSDT': '0x6B3595068778DD592e39A122f4f5a5cF09C90fE2', // SUSHI
+  'COMPUSDT': '0xc00e94Cb662C3520282E6f5717214004A7f26888', // COMP
+  'SNXUSDT': '0xC011a73ee8576Fb46F5E1c5751cA3B9Fe0af2a6F', // SNX
+  'CRVUSDT': '0xD533a949740bb3306d119CC777fa900bA034cd52', // CRV
+  'LDOUSDT': '0x5A98FcBEA516Cf06857215779Fd812CA3beF1B32', // LDO
+};
 
 // ── Utility: fetch with timeout ─────────────────────────────────────
 type FetchResponse = Awaited<ReturnType<typeof fetch>>;
@@ -160,6 +229,13 @@ router.get('/arbitrage/cross-exchange', async (_req: Request, res: Response) => 
       const estimatedProfit1k = (spreadPct / 100) * 1000;
       const volumeMin = Math.min(...entries.map((e) => e.volume));
 
+      // Fee accounting
+      const buyFeePct = (EXCHANGE_TAKER_FEES[lowest.exchange] ?? 0.001) * 100;
+      const sellFeePct = (EXCHANGE_TAKER_FEES[highest.exchange] ?? 0.001) * 100;
+      const totalFeesPct = buyFeePct + sellFeePct;
+      const netProfitPct = spreadPct - totalFeesPct;
+      const netProfit1k = (netProfitPct / 100) * 1000;
+
       opportunities.push({
         symbol,
         buy_exchange: lowest.exchange,
@@ -169,6 +245,11 @@ router.get('/arbitrage/cross-exchange', async (_req: Request, res: Response) => 
         spread_pct: Math.round(spreadPct * 10000) / 10000,
         spread_usd: Math.round(spreadUsd * 100) / 100,
         estimated_profit_1k: Math.round(estimatedProfit1k * 100) / 100,
+        buy_fee_pct: Math.round(buyFeePct * 10000) / 10000,
+        sell_fee_pct: Math.round(sellFeePct * 10000) / 10000,
+        total_fees_pct: Math.round(totalFeesPct * 10000) / 10000,
+        net_profit_pct: Math.round(netProfitPct * 10000) / 10000,
+        net_profit_1k: Math.round(netProfit1k * 100) / 100,
         volume_24h_min: volumeMin,
         timestamp: now,
       });
@@ -380,6 +461,200 @@ router.get('/arbitrage/triangular', async (_req: Request, res: Response) => {
   }
 });
 
+// ── GET /arbitrage/dex-cex ──────────────────────────────────────────
+// Compares DEX (DexScreener) prices with CEX ticker cache prices
+router.get('/arbitrage/dex-cex', async (_req: Request, res: Response) => {
+  try {
+    // Check Redis cache first
+    const cached = await redis.get('arb:dex-cex');
+    if (cached) {
+      const data = JSON.parse(cached) as DexCexOpportunity[];
+      logger.debug('Serving DEX-CEX arbitrage from cache');
+      res.json({ success: true, data });
+      return;
+    }
+
+    // Get CEX prices from ticker cache
+    const tickers = await getAllTickers();
+    const cexPrices = new Map<string, { exchange: string; price: number }>();
+
+    for (const [_key, entry] of tickers) {
+      if (!SUPPORTED_EXCHANGES.includes(entry.exchange.toLowerCase())) continue;
+      if (entry.price <= 0) continue;
+
+      const symbol = entry.symbol;
+      if (!TOKEN_ADDRESSES[symbol]) continue;
+
+      // Keep the best (highest volume exchange or first seen)
+      if (!cexPrices.has(symbol)) {
+        cexPrices.set(symbol, {
+          exchange: entry.exchange.toLowerCase(),
+          price: entry.price,
+        });
+      }
+    }
+
+    // Fetch DEX prices from DexScreener for each token
+    const tokenEntries = Object.entries(TOKEN_ADDRESSES);
+    const fetchResults = await Promise.allSettled(
+      tokenEntries.map(([symbol, address]) =>
+        fetchDexScreenerPrice(address).then((result) => ({
+          symbol,
+          ...result,
+        })),
+      ),
+    );
+
+    const opportunities: DexCexOpportunity[] = [];
+    const now = Date.now();
+
+    for (const result of fetchResults) {
+      if (result.status !== 'fulfilled') continue;
+
+      const { symbol, dexName, dexPrice, liquidity } = result.value;
+      if (dexPrice <= 0) continue;
+
+      const cexEntry = cexPrices.get(symbol);
+      if (!cexEntry) continue;
+
+      const cexPrice = cexEntry.price;
+      const cexExchange = cexEntry.exchange;
+
+      // Calculate spread
+      const spreadPct = ((dexPrice - cexPrice) / Math.min(dexPrice, cexPrice)) * 100;
+      const absSpreadPct = Math.abs(spreadPct);
+
+      // Determine direction
+      const direction: DexCexOpportunity['direction'] =
+        dexPrice < cexPrice ? 'buy_dex_sell_cex' : 'buy_cex_sell_dex';
+
+      // Fee accounting: DEX swap fee (~0.3%) + CEX taker fee
+      const cexFeePct = (EXCHANGE_TAKER_FEES[cexExchange] ?? 0.001) * 100;
+      const totalFeesPct = DEX_SWAP_FEE_PCT + cexFeePct;
+
+      const grossProfit1k = (absSpreadPct / 100) * 1000;
+      const netProfit1k = ((absSpreadPct - totalFeesPct) / 100) * 1000;
+
+      opportunities.push({
+        symbol,
+        dex_name: dexName,
+        dex_price: Math.round(dexPrice * 100) / 100,
+        cex_exchange: cexExchange,
+        cex_price: Math.round(cexPrice * 100) / 100,
+        spread_pct: Math.round(absSpreadPct * 10000) / 10000,
+        direction,
+        dex_liquidity: Math.round(liquidity),
+        estimated_profit_1k: Math.round(grossProfit1k * 100) / 100,
+        net_profit_1k: Math.round(netProfit1k * 100) / 100,
+        timestamp: now,
+      });
+    }
+
+    // Sort by spread descending
+    opportunities.sort((a, b) => b.spread_pct - a.spread_pct);
+
+    // Cache for 30 seconds
+    await redis.set('arb:dex-cex', JSON.stringify(opportunities), 'EX', DEX_CEX_CACHE_TTL);
+
+    logger.info(`DEX-CEX arbitrage scan found ${opportunities.length} opportunities`);
+
+    res.json({ success: true, data: opportunities });
+  } catch (err) {
+    logger.error('DEX-CEX arbitrage error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Failed to scan DEX-CEX arbitrage' });
+  }
+});
+
+// ── POST /arbitrage/alerts ──────────────────────────────────────────
+// Create arbitrage-specific alerts
+router.post('/arbitrage/alerts', authenticate, async (req: Request, res: Response) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user?.id;
+
+    if (!userId) {
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+
+    const { type, symbol, threshold, channels } = req.body as {
+      type?: string;
+      symbol?: string;
+      threshold?: number;
+      channels?: string[];
+    };
+
+    // Validate type
+    const validTypes = ['spread', 'funding', 'dex_cex'];
+    if (!type || !validTypes.includes(type)) {
+      res.status(400).json({
+        success: false,
+        error: `Invalid type. Must be one of: ${validTypes.join(', ')}`,
+      });
+      return;
+    }
+
+    // Validate threshold
+    if (threshold === undefined || typeof threshold !== 'number' || threshold <= 0) {
+      res.status(400).json({
+        success: false,
+        error: 'threshold must be a positive number',
+      });
+      return;
+    }
+
+    // Validate channels
+    const validChannels = ['email', 'push', 'telegram', 'webhook'];
+    if (!channels || !Array.isArray(channels) || channels.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: 'channels must be a non-empty array',
+      });
+      return;
+    }
+
+    for (const ch of channels) {
+      if (!validChannels.includes(ch)) {
+        res.status(400).json({
+          success: false,
+          error: `Invalid channel "${ch}". Must be one of: ${validChannels.join(', ')}`,
+        });
+        return;
+      }
+    }
+
+    // Build conditions JSON
+    const conditions = {
+      alert_type: 'arbitrage',
+      arb_type: type,
+      symbol: symbol || null,
+      threshold,
+    };
+
+    // Insert into alerts table
+    const result = await query(
+      `INSERT INTO alerts (user_id, name, conditions, channels, is_active, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, true, NOW(), NOW())
+       RETURNING id, user_id, name, conditions, channels, is_active, created_at, updated_at`,
+      [
+        userId,
+        `Arbitrage Alert: ${type}${symbol ? ` - ${symbol}` : ''}`,
+        JSON.stringify(conditions),
+        JSON.stringify(channels),
+      ],
+    );
+
+    const alert = result.rows[0];
+
+    logger.info(`Arbitrage alert created for user ${userId}`, { type, symbol, threshold });
+
+    res.status(201).json({ success: true, data: alert });
+  } catch (err) {
+    logger.error('Create arbitrage alert error', { error: (err as Error).message });
+    res.status(500).json({ success: false, error: 'Failed to create arbitrage alert' });
+  }
+});
+
 // ── Helper: Fetch funding rates from exchanges ─────────────────────
 
 interface FundingRateEntry {
@@ -433,6 +708,48 @@ async function fetchBybitFundingRates(): Promise<FundingRateEntry[]> {
     () => {
       logger.warn('Bybit funding rates circuit breaker fallback (arbitrage)');
       return [] as FundingRateEntry[];
+    },
+  );
+}
+
+// ── Helper: Fetch DEX price from DexScreener ────────────────────────
+
+interface DexScreenerResult {
+  dexName: string;
+  dexPrice: number;
+  liquidity: number;
+}
+
+async function fetchDexScreenerPrice(tokenAddress: string): Promise<DexScreenerResult> {
+  return dexScreenerBreaker.call(
+    async () => {
+      const resp = await fetchWithTimeout(`${DEXSCREENER_BASE}/tokens/${tokenAddress}`, 10000);
+      if (!resp.ok) throw new Error(`DexScreener ${resp.status}`);
+      const data = (await resp.json()) as unknown as DexScreenerResponse;
+
+      if (!data.pairs || data.pairs.length === 0) {
+        return { dexName: 'unknown', dexPrice: 0, liquidity: 0 };
+      }
+
+      // Pick the pair with highest liquidity
+      const sorted = [...data.pairs]
+        .filter((p) => p.priceUsd && p.liquidity?.usd > 0)
+        .sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0));
+
+      if (sorted.length === 0) {
+        return { dexName: 'unknown', dexPrice: 0, liquidity: 0 };
+      }
+
+      const best = sorted[0];
+      return {
+        dexName: best.dexId,
+        dexPrice: parseFloat(best.priceUsd),
+        liquidity: best.liquidity?.usd ?? 0,
+      };
+    },
+    () => {
+      logger.warn(`DexScreener circuit breaker fallback for ${tokenAddress}`);
+      return { dexName: 'unknown', dexPrice: 0, liquidity: 0 } as DexScreenerResult;
     },
   );
 }

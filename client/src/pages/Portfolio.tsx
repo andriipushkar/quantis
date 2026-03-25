@@ -11,6 +11,10 @@ import {
   Download,
   RefreshCw,
   Target,
+  BarChart3,
+  Activity,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
@@ -34,6 +38,20 @@ const EXCHANGES = [
   { name: 'Bybit', initials: 'BY', accent: '#F7A600' },
   { name: 'OKX', initials: 'OK', accent: '#FFFFFF' },
 ];
+
+/* ── Analytics Types ─────────────────────────────────────────── */
+interface PortfolioAnalytics {
+  totalTrades: number;
+  winRate: number;
+  profitFactor: number;
+  sharpeRatio: number;
+  maxDrawdown: number;
+  totalPnl: number;
+  bestTrade: { symbol: string; pnl: number } | null;
+  worstTrade: { symbol: string; pnl: number } | null;
+  equityCurve: { date: string; equity: number }[];
+  monthlyReturns: { month: string; pnl: number }[];
+}
 
 /* ── Pie Chart (Canvas) ──────────────────────────────────────── */
 interface PieSlice {
@@ -89,6 +107,126 @@ const AllocationPieChart: React.FC<{ slices: PieSlice[] }> = ({ slices }) => {
   return <canvas ref={canvasRef} className="mx-auto" />;
 };
 
+/* ── Equity Curve Chart (Canvas) ─────────────────────────────── */
+const EquityCurveChart: React.FC<{ data: { date: string; equity: number }[] }> = ({ data }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || data.length === 0) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const width = canvas.parentElement?.clientWidth ?? 600;
+    const height = 200;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    ctx.scale(dpr, dpr);
+
+    ctx.clearRect(0, 0, width, height);
+
+    const padding = { top: 20, right: 20, bottom: 30, left: 60 };
+    const chartW = width - padding.left - padding.right;
+    const chartH = height - padding.top - padding.bottom;
+
+    const equities = data.map((d) => d.equity);
+    const minEquity = Math.min(...equities) * 0.98;
+    const maxEquity = Math.max(...equities) * 1.02;
+    const range = maxEquity - minEquity || 1;
+    const baseline = 10000;
+
+    const getX = (i: number) => padding.left + (i / (data.length - 1)) * chartW;
+    const getY = (val: number) => padding.top + (1 - (val - minEquity) / range) * chartH;
+
+    // Grid lines
+    ctx.strokeStyle = 'rgba(132, 142, 156, 0.15)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = padding.top + (i / 4) * chartH;
+      ctx.beginPath();
+      ctx.moveTo(padding.left, y);
+      ctx.lineTo(width - padding.right, y);
+      ctx.stroke();
+
+      const val = maxEquity - (i / 4) * range;
+      ctx.fillStyle = '#848E9C';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(`$${val.toLocaleString('en-US', { maximumFractionDigits: 0 })}`, padding.left - 8, y + 3);
+    }
+
+    // X-axis labels
+    const labelCount = Math.min(data.length, 6);
+    ctx.fillStyle = '#848E9C';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    for (let i = 0; i < labelCount; i++) {
+      const idx = Math.round((i / (labelCount - 1)) * (data.length - 1));
+      const d = data[idx];
+      const x = getX(idx);
+      ctx.fillText(d.date.slice(5), x, height - 5);
+    }
+
+    // Baseline ($10,000 line)
+    if (baseline >= minEquity && baseline <= maxEquity) {
+      const baseY = getY(baseline);
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = 'rgba(132, 142, 156, 0.3)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(padding.left, baseY);
+      ctx.lineTo(width - padding.right, baseY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Draw filled area segments (green above baseline, red below)
+    for (let i = 0; i < data.length - 1; i++) {
+      const x1 = getX(i);
+      const x2 = getX(i + 1);
+      const y1 = getY(data[i].equity);
+      const y2 = getY(data[i + 1].equity);
+      const bottomY = getY(minEquity);
+      const aboveBaseline = data[i].equity >= baseline && data[i + 1].equity >= baseline;
+
+      const fillColor = aboveBaseline ? 'rgba(14, 203, 129, 0.1)' : 'rgba(246, 70, 93, 0.1)';
+      ctx.fillStyle = fillColor;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.lineTo(x2, bottomY);
+      ctx.lineTo(x1, bottomY);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Draw line
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+
+    for (let i = 0; i < data.length - 1; i++) {
+      const x1 = getX(i);
+      const x2 = getX(i + 1);
+      const y1 = getY(data[i].equity);
+      const y2 = getY(data[i + 1].equity);
+      const aboveBaseline = data[i].equity >= baseline && data[i + 1].equity >= baseline;
+
+      ctx.strokeStyle = aboveBaseline ? '#0ECB81' : '#F6465D';
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+  }, [data]);
+
+  return <canvas ref={canvasRef} className="w-full" />;
+};
+
 /* ── Helpers ──────────────────────────────────────────────────── */
 function fmt(n: number): string {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -100,12 +238,254 @@ function fmtCompact(n: number): string {
   return `$${fmt(n)}`;
 }
 
+function getToken(): string | null {
+  return localStorage.getItem('quantis_token');
+}
+
+/* ── Performance Analytics Component ─────────────────────────── */
+const PerformanceAnalytics: React.FC<{
+  analytics: PortfolioAnalytics | null;
+  analyticsLoading: boolean;
+}> = ({ analytics, analyticsLoading }) => {
+  const [open, setOpen] = useState(true);
+
+  if (analyticsLoading) {
+    return (
+      <div>
+        <button
+          onClick={() => setOpen(!open)}
+          className="flex items-center gap-2 mb-4 group"
+        >
+          <BarChart3 className="w-4 h-4 text-primary" />
+          <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">
+            Performance Analytics
+          </h2>
+          {open ? (
+            <ChevronUp className="w-4 h-4 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-muted-foreground" />
+          )}
+        </button>
+        {open && (
+          <Card>
+            <CardContent className="p-5">
+              <div className="flex items-center justify-center py-8">
+                <Spinner size="lg" />
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  }
+
+  if (!analytics || analytics.totalTrades === 0) {
+    return (
+      <div>
+        <button
+          onClick={() => setOpen(!open)}
+          className="flex items-center gap-2 mb-4 group"
+        >
+          <BarChart3 className="w-4 h-4 text-primary" />
+          <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">
+            Performance Analytics
+          </h2>
+          {open ? (
+            <ChevronUp className="w-4 h-4 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-muted-foreground" />
+          )}
+        </button>
+        {open && (
+          <Card>
+            <CardContent className="p-5">
+              <div className="flex flex-col items-center justify-center py-8 gap-3">
+                <Activity className="w-8 h-8 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  Start paper trading to see analytics
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  }
+
+  const winRateColor = analytics.winRate > 50 ? 'text-success' : 'text-danger';
+  const profitFactorColor =
+    analytics.profitFactor > 1.5
+      ? 'text-success'
+      : analytics.profitFactor >= 1
+        ? 'text-yellow-400'
+        : 'text-danger';
+  const sharpeColor =
+    analytics.sharpeRatio > 1
+      ? 'text-success'
+      : analytics.sharpeRatio >= 0.5
+        ? 'text-yellow-400'
+        : 'text-danger';
+  const pnlColor = analytics.totalPnl >= 0 ? 'text-success' : 'text-danger';
+
+  const stats = [
+    {
+      label: 'Total Trades',
+      value: analytics.totalTrades.toString(),
+      color: 'text-foreground',
+    },
+    {
+      label: 'Win Rate',
+      value: `${analytics.winRate.toFixed(1)}%`,
+      color: winRateColor,
+    },
+    {
+      label: 'Profit Factor',
+      value: analytics.profitFactor.toFixed(2),
+      color: profitFactorColor,
+    },
+    {
+      label: 'Sharpe Ratio',
+      value: analytics.sharpeRatio.toFixed(2),
+      color: sharpeColor,
+    },
+    {
+      label: 'Max Drawdown',
+      value: `${analytics.maxDrawdown.toFixed(1)}%`,
+      color: 'text-danger',
+    },
+    {
+      label: 'Total P&L',
+      value: `${analytics.totalPnl >= 0 ? '+' : ''}$${fmt(analytics.totalPnl)}`,
+      color: pnlColor,
+    },
+    {
+      label: 'Best Trade',
+      value: analytics.bestTrade
+        ? `${analytics.bestTrade.symbol} +$${fmt(analytics.bestTrade.pnl)}`
+        : 'N/A',
+      color: 'text-success',
+    },
+    {
+      label: 'Worst Trade',
+      value: analytics.worstTrade
+        ? `${analytics.worstTrade.symbol} -$${fmt(Math.abs(analytics.worstTrade.pnl))}`
+        : 'N/A',
+      color: 'text-danger',
+    },
+  ];
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 mb-4 group"
+      >
+        <BarChart3 className="w-4 h-4 text-primary" />
+        <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">
+          Performance Analytics
+        </h2>
+        {open ? (
+          <ChevronUp className="w-4 h-4 text-muted-foreground" />
+        ) : (
+          <ChevronDown className="w-4 h-4 text-muted-foreground" />
+        )}
+      </button>
+
+      {open && (
+        <div className="space-y-6">
+          {/* Stat Cards Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {stats.map((stat) => (
+              <Card key={stat.label}>
+                <CardContent className="p-4">
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">
+                    {stat.label}
+                  </p>
+                  <p className={cn('text-lg font-bold', stat.color)}>
+                    {stat.value}
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Equity Curve */}
+          {analytics.equityCurve.length > 1 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-primary" />
+                  Equity Curve
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <EquityCurveChart data={analytics.equityCurve} />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Monthly Returns */}
+          {analytics.monthlyReturns.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-primary" />
+                  Monthly Returns
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {analytics.monthlyReturns.map((mr) => {
+                    const maxAbs = Math.max(
+                      ...analytics.monthlyReturns.map((r) => Math.abs(r.pnl)),
+                      1
+                    );
+                    const barWidth = Math.min((Math.abs(mr.pnl) / maxAbs) * 100, 100);
+                    const isPositive = mr.pnl >= 0;
+
+                    return (
+                      <div key={mr.month} className="flex items-center gap-3">
+                        <span className="text-xs text-muted-foreground font-medium w-16 shrink-0">
+                          {mr.month}
+                        </span>
+                        <div className="flex-1 h-5 relative">
+                          <div
+                            className={cn(
+                              'h-full rounded-sm',
+                              isPositive ? 'bg-success/20' : 'bg-danger/20'
+                            )}
+                            style={{ width: `${barWidth}%` }}
+                          />
+                        </div>
+                        <span
+                          className={cn(
+                            'text-xs font-mono font-medium w-20 text-right shrink-0',
+                            isPositive ? 'text-success' : 'text-danger'
+                          )}
+                        >
+                          {isPositive ? '+' : ''}${fmt(mr.pnl)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 /* ── Portfolio Page ───────────────────────────────────────────── */
 const Portfolio: React.FC = () => {
   const { t } = useTranslation();
   const storeTickers = useMarketStore((s) => s.tickers);
   const updateTickers = useMarketStore((s) => s.updateTickers);
   const [loading, setLoading] = useState(true);
+  const [analytics, setAnalytics] = useState<PortfolioAnalytics | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
 
   // Fetch tickers on mount
   useEffect(() => {
@@ -123,6 +503,31 @@ const Portfolio: React.FC = () => {
     load();
     return () => { cancelled = true; };
   }, [updateTickers]);
+
+  // Fetch analytics on mount
+  useEffect(() => {
+    let cancelled = false;
+    const loadAnalytics = async () => {
+      try {
+        const token = getToken();
+        const res = await fetch('/api/v1/portfolio/analytics', {
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        });
+        const json = await res.json();
+        if (!cancelled && json.success) {
+          setAnalytics(json.data);
+        }
+      } catch {
+        // silent – analytics section will show empty state
+      } finally {
+        if (!cancelled) setAnalyticsLoading(false);
+      }
+    };
+    loadAnalytics();
+    return () => { cancelled = true; };
+  }, []);
 
   // Build position rows from demo holdings + live ticker data
   const positions = useMemo(() => {
@@ -426,6 +831,9 @@ const Portfolio: React.FC = () => {
           </p>
         </div>
       </div>
+
+      {/* ── Performance Analytics Section ───────────────────────── */}
+      <PerformanceAnalytics analytics={analytics} analyticsLoading={analyticsLoading} />
 
       {/* ── Rebalance Section ──────────────────────────────────── */}
       {!loading && totalValue > 0 && (

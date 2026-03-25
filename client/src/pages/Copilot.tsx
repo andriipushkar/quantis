@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Send, Bot, User, ChevronDown } from 'lucide-react';
+import { MessageSquare, Send, Bot, User, ChevronDown, ChevronUp, Sun, RefreshCw } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
 interface CopilotContext {
@@ -18,6 +18,18 @@ interface Message {
   content: string;
   context?: CopilotContext;
   timestamp: Date;
+}
+
+interface MorningBriefData {
+  brief: string;
+  generatedAt: string;
+  context: {
+    btcPrice?: number;
+    ethPrice?: number;
+    sentiment?: number;
+    topGainers?: { symbol: string; change: number }[];
+    topLosers?: { symbol: string; change: number }[];
+  };
 }
 
 const SYMBOLS = [
@@ -45,6 +57,11 @@ const Copilot: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Morning Brief state
+  const [brief, setBrief] = useState<MorningBriefData | null>(null);
+  const [briefLoading, setBriefLoading] = useState(true);
+  const [briefOpen, setBriefOpen] = useState(() => !localStorage.getItem('quantis_brief_read'));
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -52,6 +69,39 @@ const Copilot: React.FC = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Fetch morning brief on mount
+  const fetchBrief = async () => {
+    setBriefLoading(true);
+    try {
+      const token = getToken();
+      const res = await fetch('/api/v1/copilot/morning-brief', {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      const json = await res.json();
+      if (json.success) {
+        setBrief(json.data);
+      }
+    } catch {
+      // silent – brief section will stay empty
+    } finally {
+      setBriefLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBrief();
+  }, []);
+
+  const handleBriefToggle = () => {
+    const next = !briefOpen;
+    setBriefOpen(next);
+    if (!next) {
+      localStorage.setItem('quantis_brief_read', '1');
+    }
+  };
 
   const sendMessage = async (question: string) => {
     if (!question.trim() || loading) return;
@@ -123,6 +173,13 @@ const Copilot: React.FC = () => {
     return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
+  const todayStr = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] max-w-4xl mx-auto">
       {/* Header */}
@@ -133,6 +190,129 @@ const Copilot: React.FC = () => {
         <div>
           <h1 className="text-lg font-semibold text-foreground">AI Copilot</h1>
           <p className="text-xs text-muted-foreground">Technical analysis assistant</p>
+        </div>
+      </div>
+
+      {/* Morning Brief Card */}
+      <div className="px-4 pt-4">
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          {/* Brief Header */}
+          <button
+            onClick={handleBriefToggle}
+            className="w-full flex items-center justify-between px-4 py-3 hover:bg-secondary/30 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Sun className="w-4 h-4 text-yellow-400" />
+              <span className="text-sm font-semibold text-foreground">Morning Brief</span>
+              <span className="text-xs text-muted-foreground">{todayStr}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {!briefLoading && brief && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    fetchBrief();
+                  }}
+                  className="p-1 rounded hover:bg-secondary transition-colors"
+                  title="Refresh brief"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-muted-foreground" />
+                </button>
+              )}
+              {briefOpen ? (
+                <ChevronUp className="w-4 h-4 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+              )}
+            </div>
+          </button>
+
+          {/* Brief Content */}
+          {briefOpen && (
+            <div className="px-4 pb-4 border-t border-border/50">
+              {briefLoading ? (
+                <div className="space-y-3 pt-3">
+                  <div className="h-4 bg-secondary rounded animate-pulse w-3/4" />
+                  <div className="h-4 bg-secondary rounded animate-pulse w-full" />
+                  <div className="h-4 bg-secondary rounded animate-pulse w-5/6" />
+                  <div className="h-4 bg-secondary rounded animate-pulse w-2/3" />
+                  <div className="flex gap-2 mt-3">
+                    <div className="h-6 w-24 bg-secondary rounded-full animate-pulse" />
+                    <div className="h-6 w-24 bg-secondary rounded-full animate-pulse" />
+                    <div className="h-6 w-20 bg-secondary rounded-full animate-pulse" />
+                  </div>
+                </div>
+              ) : brief ? (
+                <div className="space-y-3 pt-3">
+                  {/* Brief text */}
+                  <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                    {brief.brief}
+                  </p>
+
+                  {/* Context badges */}
+                  {brief.context && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {brief.context.btcPrice != null && (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-secondary text-foreground">
+                          BTC {formatPrice(brief.context.btcPrice)}
+                        </span>
+                      )}
+                      {brief.context.ethPrice != null && (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-secondary text-foreground">
+                          ETH {formatPrice(brief.context.ethPrice)}
+                        </span>
+                      )}
+                      {brief.context.sentiment != null && (
+                        <span
+                          className={cn(
+                            'inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium',
+                            brief.context.sentiment >= 60
+                              ? 'bg-success/10 text-success'
+                              : brief.context.sentiment <= 40
+                                ? 'bg-danger/10 text-danger'
+                                : 'bg-secondary text-muted-foreground'
+                          )}
+                        >
+                          Sentiment {brief.context.sentiment}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Top Gainers & Losers */}
+                  {brief.context && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {brief.context.topGainers?.slice(0, 3).map((g) => (
+                        <span
+                          key={g.symbol}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success"
+                        >
+                          {g.symbol} +{g.change.toFixed(1)}%
+                        </span>
+                      ))}
+                      {brief.context.topLosers?.slice(0, 3).map((l) => (
+                        <span
+                          key={l.symbol}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-danger/10 text-danger"
+                        >
+                          {l.symbol} {l.change.toFixed(1)}%
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Generated timestamp */}
+                  <p className="text-[10px] text-muted-foreground">
+                    Generated {new Date(brief.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground pt-3">
+                  Unable to load morning brief. Try refreshing.
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
