@@ -151,46 +151,59 @@ const MOCK_NEWS: Omit<NewsItem, 'id' | 'sentiment' | 'category'>[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Fetch from CoinGecko or fallback to mock
+// Fetch from CryptoPanic or fallback to mock
 // ---------------------------------------------------------------------------
+
+async function fetchFromCryptoPanic(): Promise<NewsItem[]> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
+  const token = process.env.CRYPTOPANIC_API_TOKEN || 'free';
+  const response = await fetch(
+    `https://cryptopanic.com/api/free/v1/posts/?auth_token=${token}&public=true&kind=news`,
+    { signal: controller.signal }
+  );
+  clearTimeout(timeout);
+
+  if (!response.ok) throw new Error(`CryptoPanic returned ${response.status}`);
+
+  const json = await response.json() as {
+    results?: Array<{
+      title: string;
+      url: string;
+      source: { title: string };
+      published_at: string;
+      currencies?: Array<{ code: string }>;
+    }>;
+  };
+
+  const results = json.results ?? [];
+  if (results.length === 0) throw new Error('No results from CryptoPanic');
+
+  return results.map((item, i) => {
+    const title = item.title || 'Crypto News';
+    const currencies = (item.currencies ?? []).map((c) => c.code).join(', ');
+    const description = currencies ? `Related to: ${currencies}` : '';
+    const source = item.source?.title || 'CryptoPanic';
+
+    return {
+      id: `cp-${i}-${Date.now()}`,
+      title,
+      description,
+      source,
+      category: detectCategory(title, description),
+      sentiment: analyzeSentiment(title),
+      publishedAt: item.published_at || new Date().toISOString(),
+      url: item.url || 'https://cryptopanic.com',
+    };
+  });
+}
 
 async function fetchNews(): Promise<NewsItem[]> {
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
-
-    const response = await fetch(
-      'https://api.coingecko.com/api/v3/status_updates?per_page=20',
-      { signal: controller.signal }
-    );
-    clearTimeout(timeout);
-
-    if (!response.ok) throw new Error(`CoinGecko returned ${response.status}`);
-
-    const json = await response.json() as { status_updates?: Record<string, unknown>[] };
-    const updates = json.status_updates ?? [];
-
-    if (updates.length === 0) throw new Error('No updates returned');
-
-    return updates.map((u: Record<string, unknown>, i: number) => {
-      const title = (u.user_title as string) || (u.description as string)?.slice(0, 100) || 'Crypto Update';
-      const description = (u.description as string) || '';
-      const source = ((u.project as Record<string, string>)?.name) || 'CoinGecko';
-      const publishedAt = (u.created_at as string) || new Date().toISOString();
-
-      return {
-        id: `cg-${i}-${Date.now()}`,
-        title,
-        description: description.slice(0, 300),
-        source,
-        category: detectCategory(title, description),
-        sentiment: analyzeSentiment(title),
-        publishedAt,
-        url: `https://www.coingecko.com`,
-      };
-    });
+    return await fetchFromCryptoPanic();
   } catch (err) {
-    logger.warn('CoinGecko news fetch failed, using mock data', {
+    logger.warn('CryptoPanic news fetch failed, using mock data', {
       error: (err as Error).message,
     });
 

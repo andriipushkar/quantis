@@ -3,6 +3,7 @@ import { LayoutGrid } from 'lucide-react';
 import { TradingChart, type OHLCVData } from '@/components/charts/TradingChart';
 import { getOHLCV, getPairs, type TradingPair } from '@/services/api';
 import { cn } from '@/utils/cn';
+import { SkeletonChart } from '@/components/common/Skeleton';
 
 /* ── Constants ─────────────────────────────────────────────────── */
 
@@ -98,8 +99,8 @@ const ChartPanel: React.FC<ChartPanelProps> = React.memo(({ defaultPair, default
       {/* Chart area */}
       <div className="flex-1 min-h-0 relative">
         {loading && candles.length === 0 ? (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-muted-foreground text-sm animate-pulse">Loading...</span>
+          <div className="absolute inset-0">
+            <SkeletonChart className="h-full border-0" />
           </div>
         ) : (
           <TradingChart

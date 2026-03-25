@@ -5,6 +5,7 @@ import { getTickers, getOHLCV, getFearGreed, getMarketRegime, type TickerData, t
 import { useMarketStore } from '@/stores/market';
 import { useAuthStore } from '@/stores/auth';
 import { cn } from '@/utils/cn';
+import { Shimmer } from '@/components/common/Skeleton';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -125,8 +126,9 @@ const FearGreedGauge: React.FC = React.memo(() => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-40">
-        <span className="text-muted-foreground text-sm animate-pulse">Loading...</span>
+      <div className="flex flex-col items-center gap-3 h-40 justify-center">
+        <Shimmer className="w-full h-28 rounded-lg" />
+        <Shimmer className="h-4 w-16" />
       </div>
     );
   }
@@ -339,8 +341,13 @@ const MarketRegimeWidget: React.FC = React.memo(() => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-40">
-        <span className="text-muted-foreground text-sm animate-pulse">Loading...</span>
+      <div className="flex flex-col gap-3 h-40 justify-center">
+        <div className="flex items-center gap-2">
+          <Shimmer className="w-10 h-10 rounded-lg" />
+          <Shimmer className="h-6 w-24 rounded-full" />
+        </div>
+        <Shimmer className="h-3 w-full" />
+        <Shimmer className="h-3 w-2/3" />
       </div>
     );
   }

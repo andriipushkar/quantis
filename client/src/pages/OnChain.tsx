@@ -434,6 +434,7 @@ export default function OnChain() {
         <div className="flex items-center gap-3">
           <Network className="w-6 h-6 text-primary" />
           <h1 className="text-2xl font-bold text-foreground">On-Chain Analytics</h1>
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-yellow-500/15 text-yellow-400 border border-yellow-500/20">DEMO</span>
         </div>
       </div>
 

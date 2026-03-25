@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowLeftRight, RefreshCw, Calculator, Zap, TrendingUp, Clock, Bell, X } from 'lucide-react';
 import { cn } from '@/utils/cn';
+import { SkeletonRow } from '@/components/common/Skeleton';
 
 function getToken(): string | null {
   return localStorage.getItem('quantis_token');
@@ -399,7 +400,7 @@ const ArbitrageScanner: React.FC = () => {
                   </thead>
                   <tbody>
                     {loading && crossData.length === 0 ? (
-                      <tr><td colSpan={8} className="text-center py-8 text-muted-foreground">Loading...</td></tr>
+                      <>{Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} cols={8} />)}</>
                     ) : crossData.length === 0 ? (
                       <tr><td colSpan={8} className="text-center py-8 text-muted-foreground">No arbitrage opportunities found</td></tr>
                     ) : (
@@ -444,7 +445,7 @@ const ArbitrageScanner: React.FC = () => {
                 </thead>
                 <tbody>
                   {loading && fundingData.length === 0 ? (
-                    <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">Loading...</td></tr>
+                    <>{Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} cols={6} />)}</>
                   ) : fundingData.length === 0 ? (
                     <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">No funding rate opportunities found</td></tr>
                   ) : (
@@ -482,7 +483,7 @@ const ArbitrageScanner: React.FC = () => {
                 </thead>
                 <tbody>
                   {loading && triangularData.length === 0 ? (
-                    <tr><td colSpan={4} className="text-center py-8 text-muted-foreground">Loading...</td></tr>
+                    <>{Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} cols={4} />)}</>
                   ) : triangularData.length === 0 ? (
                     <tr><td colSpan={4} className="text-center py-8 text-muted-foreground">No triangular opportunities found</td></tr>
                   ) : (
@@ -545,7 +546,7 @@ const ArbitrageScanner: React.FC = () => {
                 </thead>
                 <tbody>
                   {loading && dexCexData.length === 0 ? (
-                    <tr><td colSpan={8} className="text-center py-8 text-muted-foreground">Loading...</td></tr>
+                    <>{Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} cols={8} />)}</>
                   ) : dexCexData.length === 0 ? (
                     <tr><td colSpan={8} className="text-center py-8 text-muted-foreground">No DEX-CEX opportunities found</td></tr>
                   ) : (

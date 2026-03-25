@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { cn } from '@/utils/cn';
+import { SkeletonRow } from '@/components/common/Skeleton';
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
@@ -521,11 +522,7 @@ const Journal: React.FC = () => {
             </thead>
             <tbody>
               {loading ? (
-                <tr>
-                  <td colSpan={11} className="text-center py-12 text-muted-foreground">
-                    Loading...
-                  </td>
-                </tr>
+                <>{Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} cols={11} />)}</>
               ) : entries.length === 0 ? (
                 <tr>
                   <td colSpan={11} className="text-center py-12 text-muted-foreground">

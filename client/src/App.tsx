@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { ToastContainer } from '@/components/common/ToastContainer';
 import { GlobalSearch } from '@/components/common/GlobalSearch';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 
 const Landing = lazy(() => import('@/pages/Landing'));
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
@@ -128,7 +129,7 @@ const App: React.FC = () => {
   }, [openSearch]);
 
   return (
-    <>
+    <ErrorBoundary>
       <Suspense fallback={<PageLoader />}>
         <Routes>
           {/* Public landing for guests; authenticated users redirect to dashboard */}
@@ -144,7 +145,7 @@ const App: React.FC = () => {
           <Route path="/api-docs" element={<APIDocs />} />
 
           {/* App routes wrapped in Layout */}
-          <Route element={<Layout />}>
+          <Route element={<ErrorBoundary><Layout /></ErrorBoundary>}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/chart/:symbol?" element={<Chart />} />
             <Route path="/screener" element={<Screener />} />
@@ -215,7 +216,7 @@ const App: React.FC = () => {
       </Suspense>
       <ToastContainer />
       <GlobalSearch isOpen={searchOpen} onClose={closeSearch} />
-    </>
+    </ErrorBoundary>
   );
 };
 

@@ -340,9 +340,10 @@ describe('ArbitrageScanner page', () => {
   it('Loading state shown when data is being fetched', async () => {
     // Make fetch hang
     mockFetch.mockImplementationOnce(() => new Promise(() => {}));
-    wrap(<ArbitrageScanner />);
-    // The loading state shows "Loading..." text in the table
-    expect(screen.getByText('Loading...')).toBeTruthy();
+    const { container } = wrap(<ArbitrageScanner />);
+    // The loading state shows skeleton rows in the table
+    const pulsingElements = container.querySelectorAll('.animate-pulse');
+    expect(pulsingElements.length).toBeGreaterThan(0);
   });
 
   it('Error state shown when fetch fails', async () => {

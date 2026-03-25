@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Repeat, Plus, Trash2, BarChart3 } from 'lucide-react';
 import { cn } from '@/utils/cn';
+import { SkeletonCard } from '@/components/common/Skeleton';
 
 function getToken(): string | null {
   return localStorage.getItem('quantis_token');
@@ -343,7 +344,7 @@ const DCABot: React.FC = () => {
             Active Bots ({bots.length})
           </h2>
 
-          {loading && <p className="text-sm text-muted-foreground">Loading...</p>}
+          {loading && <SkeletonCard />}
 
           {!loading && bots.length === 0 && (
             <div className="bg-secondary rounded-xl border border-border p-8 text-center">
