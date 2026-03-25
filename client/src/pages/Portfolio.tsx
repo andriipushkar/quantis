@@ -394,7 +394,7 @@ const PerformanceAnalytics: React.FC<{
       {open && (
         <div className="space-y-6">
           {/* Stat Cards Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {stats.map((stat) => (
               <Card key={stat.label}>
                 <CardContent className="p-4">
@@ -680,7 +680,7 @@ const Portfolio: React.FC = () => {
 
       {/* ── Main grid: Allocation chart + Positions table ───── */}
       {!loading && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {/* Allocation pie chart */}
           <Card className="lg:col-span-1">
             <CardHeader>
@@ -803,7 +803,7 @@ const Portfolio: React.FC = () => {
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {EXCHANGES.map((ex) => (
             <Card key={ex.name}>
               <CardContent className="p-5 flex flex-col items-center gap-4">
@@ -907,7 +907,7 @@ const RebalanceSection: React.FC<RebalanceSectionProps> = ({ positions, totalVal
             <p className="text-xs text-muted-foreground mb-3">
               Set your target allocation for each asset. Total should equal 100%.
             </p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {positions.map((p) => (
                 <div key={p.asset} className="space-y-1">
                   <label className="text-xs font-medium text-foreground flex items-center gap-1.5">

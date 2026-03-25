@@ -335,3 +335,59 @@ curl http://localhost:3001/api/v1/analysis/signals
 - Simulation results: Total Trades, Grid Profit, Unrealized P&L, APR %
 - Equity curve за період симуляції
 - Бот з'являється в Active Bots списку зі статусом "Simulated"
+
+---
+
+### Тест 5.18: DEX-CEX Arbitrage
+1. Navigate to /arbitrage
+2. Click "DEX-CEX" tab
+3. Verify opportunities load (or show "No opportunities" if none available)
+4. Check each row shows: Token, DEX name, DEX price, CEX exchange, CEX price, Spread %, Direction
+5. Verify spread % calculation is correct (|DEX - CEX| / min(DEX, CEX) * 100)
+
+---
+
+### Тест 5.19: Arbitrage Fee Accounting
+1. On Cross-Exchange tab, verify "Fees" and "Net Profit" columns are visible
+2. Check that Fees shows buy_fee + sell_fee (e.g., 0.20% for Binance↔Bybit)
+3. Verify Net Profit = Spread - Fees
+4. Confirm negative net profits shown in red
+
+---
+
+### Тест 5.20: Arbitrage Alerts
+1. Click the bell icon (🔔) next to Auto-refresh
+2. Enter threshold (e.g., 0.5%)
+3. Click "Create Alert"
+4. Verify success response
+5. Check alert appears in /alerts page
+
+---
+
+### Тест 5.21: AI Morning Brief
+1. Navigate to /copilot
+2. Verify "Morning Brief" card appears above chat
+3. Check it shows: market summary, top gainers/losers, BTC/ETH prices
+4. Click collapse button to minimize
+5. Click "Refresh" to reload brief
+6. Verify rate limit (1 per hour)
+
+---
+
+### Тест 5.22: Portfolio Analytics
+1. Navigate to /portfolio
+2. Check "Performance Analytics" section
+3. Verify stat cards: Win Rate, Profit Factor, Sharpe Ratio, Max Drawdown, Total P&L
+4. If paper trades exist, verify equity curve chart renders
+5. Verify monthly returns bars show correctly
+6. If no trades, verify "Start paper trading to see analytics" message
+
+---
+
+### Тест 5.23: Quick Price Alerts (Watchlist)
+1. On Dashboard, find watchlist strip
+2. Click bell icon on any coin (e.g., BTC)
+3. Verify alert dropdown shows current price
+4. Enter target price, click "Alert Above"
+5. Verify toast "Alert created: BTC above $XX,XXX"
+6. Click bell on another coin, verify separate dropdown

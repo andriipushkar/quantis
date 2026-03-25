@@ -11,7 +11,7 @@
 | api-gateway | Jest + ts-jest | ~1,130 | 99.9% lines |
 | client | Vitest + jsdom | ~1,500 | 94% lines |
 | E2E | Playwright | 36 | — |
-| **Total** | | **~3,362** | |
+| **Total** | | **~2,265+** | |
 
 ## Running Tests
 

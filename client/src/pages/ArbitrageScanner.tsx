@@ -277,7 +277,7 @@ const ArbitrageScanner: React.FC = () => {
               Alert
             </button>
             {showAlertModal && (
-              <div className="absolute right-0 top-full mt-2 w-72 bg-card border border-border rounded-lg p-4 shadow-xl z-50 space-y-3">
+              <div className="absolute right-0 top-full mt-2 w-72 max-w-[calc(100vw-2rem)] bg-card border border-border rounded-lg p-4 shadow-xl z-50 space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-foreground">Set Alert Threshold</h3>
                   <button onClick={() => setShowAlertModal(false)} className="text-muted-foreground hover:text-foreground">
@@ -334,7 +334,7 @@ const ArbitrageScanner: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-0 border border-border rounded-lg overflow-hidden w-fit">
+      <div className="flex overflow-x-auto w-full gap-0 border border-border rounded-lg">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -364,7 +364,7 @@ const ArbitrageScanner: React.FC = () => {
           {tab === 'cross-exchange' && (
             <>
               {/* Stats */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {[
                   { label: 'Total Opportunities', value: totalOpps.toString(), icon: ArrowLeftRight },
                   { label: 'Best Spread %', value: `${fmt(bestSpread)}%`, icon: TrendingUp },
@@ -387,9 +387,14 @@ const ArbitrageScanner: React.FC = () => {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-muted-foreground">
-                      {['Pair', 'Buy Exchange', 'Buy Price', 'Sell Exchange', 'Sell Price', 'Spread %', 'Fees', 'Net Profit ($1K)'].map((h) => (
-                        <th key={h} className="text-left px-4 py-3 font-medium">{h}</th>
-                      ))}
+                      <th className="text-left px-4 py-3 font-medium">Pair</th>
+                      <th className="text-left px-4 py-3 font-medium hidden sm:table-cell">Buy Exchange</th>
+                      <th className="text-left px-4 py-3 font-medium">Buy Price</th>
+                      <th className="text-left px-4 py-3 font-medium hidden sm:table-cell">Sell Exchange</th>
+                      <th className="text-left px-4 py-3 font-medium">Sell Price</th>
+                      <th className="text-left px-4 py-3 font-medium">Spread %</th>
+                      <th className="text-left px-4 py-3 font-medium hidden sm:table-cell">Fees</th>
+                      <th className="text-left px-4 py-3 font-medium">Net Profit ($1K)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -408,12 +413,12 @@ const ArbitrageScanner: React.FC = () => {
                           )}
                         >
                           <td className="px-4 py-3 font-medium text-foreground">{o.pair}</td>
-                          <td className="px-4 py-3"><ExchangeBadge name={o.buyExchange} /></td>
+                          <td className="px-4 py-3 hidden sm:table-cell"><ExchangeBadge name={o.buyExchange} /></td>
                           <td className="px-4 py-3 text-foreground font-mono">${fmtPrice(o.buyPrice)}</td>
-                          <td className="px-4 py-3"><ExchangeBadge name={o.sellExchange} /></td>
+                          <td className="px-4 py-3 hidden sm:table-cell"><ExchangeBadge name={o.sellExchange} /></td>
                           <td className="px-4 py-3 text-foreground font-mono">${fmtPrice(o.sellPrice)}</td>
                           <td className={cn('px-4 py-3 font-bold', spreadColor(o.spreadPct))}>{fmt(o.spreadPct)}%</td>
-                          <td className="px-4 py-3 text-yellow-400 font-mono">{fmt(o.totalFeesPct)}%</td>
+                          <td className="px-4 py-3 text-yellow-400 font-mono hidden sm:table-cell">{fmt(o.totalFeesPct)}%</td>
                           <td className={cn('px-4 py-3 font-bold font-mono', o.netProfit1k >= 0 ? 'text-green-500' : 'text-red-500')}>
                             ${fmt(o.netProfit1k)}
                           </td>
@@ -528,9 +533,14 @@ const ArbitrageScanner: React.FC = () => {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-muted-foreground">
-                    {['Token', 'DEX', 'DEX Price', 'CEX', 'CEX Price', 'Spread %', 'Direction', 'Net Profit ($1K)'].map((h) => (
-                      <th key={h} className="text-left px-4 py-3 font-medium">{h}</th>
-                    ))}
+                    <th className="text-left px-4 py-3 font-medium">Token</th>
+                    <th className="text-left px-4 py-3 font-medium hidden sm:table-cell">DEX</th>
+                    <th className="text-left px-4 py-3 font-medium">DEX Price</th>
+                    <th className="text-left px-4 py-3 font-medium hidden sm:table-cell">CEX</th>
+                    <th className="text-left px-4 py-3 font-medium">CEX Price</th>
+                    <th className="text-left px-4 py-3 font-medium">Spread %</th>
+                    <th className="text-left px-4 py-3 font-medium hidden sm:table-cell">Direction</th>
+                    <th className="text-left px-4 py-3 font-medium">Net Profit ($1K)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -542,12 +552,12 @@ const ArbitrageScanner: React.FC = () => {
                     dexCexData.map((o, i) => (
                       <tr key={`${o.symbol}-${i}`} className="border-b border-border/50 hover:bg-primary/5 transition-colors">
                         <td className="px-4 py-3 font-medium text-foreground">{o.symbol}</td>
-                        <td className="px-4 py-3"><DexBadge name={o.dexName} /></td>
+                        <td className="px-4 py-3 hidden sm:table-cell"><DexBadge name={o.dexName} /></td>
                         <td className="px-4 py-3 text-foreground font-mono">${fmtPrice(o.dexPrice)}</td>
-                        <td className="px-4 py-3"><ExchangeBadge name={o.cexExchange} /></td>
+                        <td className="px-4 py-3 hidden sm:table-cell"><ExchangeBadge name={o.cexExchange} /></td>
                         <td className="px-4 py-3 text-foreground font-mono">${fmtPrice(o.cexPrice)}</td>
                         <td className={cn('px-4 py-3 font-bold', spreadColor(o.spreadPct))}>{fmt(o.spreadPct)}%</td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 hidden sm:table-cell">
                           {o.direction === 'buy_dex_sell_cex' ? (
                             <span className="text-green-400 text-xs font-medium">Buy DEX &rarr; Sell CEX</span>
                           ) : (
@@ -568,7 +578,7 @@ const ArbitrageScanner: React.FC = () => {
 
         {/* ── Profit Calculator Sidebar ────────────────────── */}
         <div className="w-full lg:w-80 shrink-0">
-          <div className="bg-card border border-border rounded-lg p-5 space-y-4 sticky top-6">
+          <div className="bg-card border border-border rounded-lg p-5 space-y-4 sticky top-20 lg:top-6">
             <div className="flex items-center gap-2">
               <Calculator className="w-5 h-5 text-primary" />
               <h2 className="text-lg font-bold text-foreground">Profit Calculator</h2>

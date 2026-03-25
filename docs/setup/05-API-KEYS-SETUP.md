@@ -157,6 +157,16 @@ SENTRY_DSN=https://xxxxx@sentry.io/12345
 
 **Cost:** Free (5,000 errors/month)
 
+## DexScreener API (Free)
+
+DexScreener provides DEX token data and is used for DEX-CEX arbitrage comparison.
+
+- **No API key required** — free public API
+- **Rate limit:** ~300 requests per minute
+- **Base URL:** `https://api.dexscreener.com/latest/dex`
+- **Used by:** Arbitrage Scanner (DEX-CEX tab)
+- **Circuit breaker:** Enabled with 5 failures / 30s recovery
+
 ## Quick Checklist
 
 ```

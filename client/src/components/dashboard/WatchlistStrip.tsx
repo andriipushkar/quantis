@@ -101,7 +101,7 @@ export const WatchlistStrip: React.FC = () => {
           <div key={symbol} className="relative flex-shrink-0">
             <button
               onClick={() => handleClick(symbol)}
-              className="relative bg-card border border-border rounded-xl px-4 py-3 hover:border-primary/50 hover:shadow-gold-sm transition-all duration-200 min-w-[140px]"
+              className="relative bg-card border border-border rounded-xl px-4 py-3 hover:border-primary/50 hover:shadow-gold-sm transition-all duration-200 min-w-[120px] sm:min-w-[140px]"
             >
               {/* Bell icon */}
               <span
@@ -147,7 +147,7 @@ export const WatchlistStrip: React.FC = () => {
             {isAlertOpen && (
               <div
                 ref={dropdownRef}
-                className="absolute top-full left-0 mt-1 z-10 bg-card border border-border rounded-lg shadow-lg p-3 min-w-[200px]"
+                className="absolute top-full left-0 mt-1 z-10 bg-card border border-border rounded-lg shadow-lg p-3 min-w-[200px] max-w-[calc(100vw-2rem)]"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="text-xs text-muted-foreground mb-2">

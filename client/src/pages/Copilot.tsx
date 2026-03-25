@@ -345,7 +345,7 @@ const Copilot: React.FC = () => {
           <div
             key={msg.id}
             className={cn(
-              'flex gap-3 max-w-[85%]',
+              'flex gap-3 max-w-[95%] sm:max-w-[85%]',
               msg.role === 'user' ? 'ml-auto flex-row-reverse' : 'mr-auto'
             )}
           >
@@ -424,7 +424,7 @@ const Copilot: React.FC = () => {
 
         {/* Loading indicator */}
         {loading && (
-          <div className="flex gap-3 mr-auto max-w-[85%]">
+          <div className="flex gap-3 mr-auto max-w-[95%] sm:max-w-[85%]">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-card border border-border flex-shrink-0">
               <Bot className="w-4 h-4 text-muted-foreground" />
             </div>

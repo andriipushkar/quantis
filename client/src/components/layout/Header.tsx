@@ -84,7 +84,7 @@ export const Header: React.FC = () => {
           title="Switch language"
         >
           <Globe className="w-4 h-4" />
-          <span>{LANG_LABELS[i18n.language] || 'EN'}</span>
+          <span className="hidden sm:inline">{LANG_LABELS[i18n.language] || 'EN'}</span>
         </button>
 
         <NotificationCenter />
