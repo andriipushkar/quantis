@@ -527,7 +527,7 @@ const GridBot: React.FC = () => {
                 <PriceRangeBar lower={bot.lower_price} upper={bot.upper_price} />
 
                 {/* Stats */}
-                <div className="grid grid-cols-5 gap-1.5">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5">
                   <div className="bg-background rounded-lg p-2 text-center">
                     <p className="text-[10px] text-muted-foreground">Invested</p>
                     <p className="text-xs font-semibold text-foreground">${fmt(bot.investment)}</p>

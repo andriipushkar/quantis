@@ -28,15 +28,10 @@
 | `/confluence` | Confluence | Cross-signal price zones |
 | `/seasonality` | Seasonality | Hourly + day-of-week analysis |
 | `/market-breadth` | MarketBreadth | A/D line, % above SMA, score |
-| `/narratives` | Narratives | 6 sector narrative scores |
 | `/indicators` | IndicatorLibrary | 32 indicators catalog |
 | `/pattern-scanner` | PatternScanner | 8 pattern types detection |
-| `/elliott-wave` | ElliottWave | 5-wave impulse + ABC |
-| `/harmonic-patterns` | HarmonicPatterns | Gartley/Butterfly/Bat/Crab |
-| `/wyckoff` | WyckoffPhase | 4 phases + events |
-| `/order-flow` | OrderFlow | Bid/ask footprint + delta |
-| `/market-profile` | MarketProfile | TPO / Volume Profile |
-| `/renko` | RenkoChart | Non-time Renko bricks |
+| `/advanced-patterns` | AdvancedPatterns | Elliott Wave + Harmonic + Wyckoff (tabs) |
+| `/advanced-charts` | AdvancedCharts | Renko + Market Profile + Order Flow (tabs) |
 | `/intermarket` | IntermarketAnalysis | TradFi + BTC correlations |
 | `/btc-models` | BitcoinModels | S2F, Rainbow, Pi Cycle, MVRV |
 | `/token-scanner` | TokenScanner | 6-factor risk scoring |
@@ -45,6 +40,9 @@
 | Route | Page | Description |
 |---|---|---|
 | `/signals` | Signals | Live trading signals |
+| `/arbitrage` | ArbitrageScanner | Cross-exchange, funding rate, triangular arbitrage |
+| `/backtester` | StrategyBacktester | Strategy backtesting with equity curve + stats |
+| `/grid-bot` | GridBot | Grid trading bot (symbol, price range, levels) |
 | `/paper-trading` | PaperTrading | Virtual $10,000 account |
 | `/copy-trading` | CopyTrading | Follow lead traders |
 | `/dca` | DCABot | Smart DCA with 3 strategies |
@@ -69,12 +67,11 @@
 |---|---|---|
 | `/news` | News | 12 articles with sentiment |
 | `/whale-alert` | WhaleAlert | Volume spike alerts |
-| `/influencers` | InfluencerTracker | 10 influencers + consensus |
+| `/social-intelligence` | SocialIntelligence | Narratives + Influencer Tracker (tabs) |
 | `/exchange-health` | ExchangeHealth | 3 exchanges monitored |
 | `/tokenomics` | Tokenomics | Supply, inflation, scores |
 | `/defi` | DeFi | 10 protocols, TVL, APY |
-| `/dev-activity` | DevActivity | GitHub activity scores |
-| `/network-metrics` | NetworkMetrics | DAA, NVT, Metcalfe |
+| `/on-chain` | OnChainAnalytics | Dev Activity + Network Metrics (tabs) |
 
 ### Community
 | Route | Page | Description |
@@ -94,4 +91,23 @@
 | `/referral` | Referral | Referral link, stats, earnings |
 | `/admin` | Admin | Admin panel (restricted) |
 
-**Total: 63 routes / 63 page components**
+**Total: 60 routes / 60 page components**
+
+---
+
+### Legacy Redirects
+
+Old individual routes still work and redirect to the merged pages:
+
+| Old Route | Redirects To |
+|---|---|
+| `/elliott-wave` | `/advanced-patterns?tab=elliott` |
+| `/harmonic-patterns` | `/advanced-patterns?tab=harmonic` |
+| `/wyckoff` | `/advanced-patterns?tab=wyckoff` |
+| `/renko` | `/advanced-charts?tab=renko` |
+| `/market-profile` | `/advanced-charts?tab=market-profile` |
+| `/order-flow` | `/advanced-charts?tab=order-flow` |
+| `/dev-activity` | `/on-chain?tab=dev-activity` |
+| `/network-metrics` | `/on-chain?tab=network-metrics` |
+| `/narratives` | `/social-intelligence?tab=narratives` |
+| `/influencers` | `/social-intelligence?tab=influencers` |

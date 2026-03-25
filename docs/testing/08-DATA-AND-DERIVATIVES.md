@@ -123,10 +123,17 @@
 
 ---
 
-## Тест 8.9: Dev Activity
+## Тест 8.9: On-Chain Analytics (Dev Activity + Network Metrics)
 
 **Кроки:**
-1. Перейти на http://localhost:5173/dev-activity
+1. Перейти на http://localhost:5173/on-chain
+
+**Очікуваний результат:**
+- 2 вкладки: Dev Activity, Network Metrics
+- За замовчуванням відкрита Dev Activity
+
+**Кроки (Dev Activity tab):**
+2. На вкладці Dev Activity:
 
 **Очікуваний результат:**
 - 5 проектів (BTC, ETH, SOL, DOT, LINK)
@@ -134,13 +141,9 @@
 - Stats: Weekly Commits, Active Devs, GitHub Stars
 - ETH має найвищий score (95)
 
----
-
-## Тест 8.10: Network Metrics
-
-**Кроки:**
-1. Перейти на http://localhost:5173/network-metrics
-2. Вибрати BTC
+**Кроки (Network Metrics tab):**
+3. Переключити на вкладку Network Metrics
+4. Вибрати BTC
 
 **Очікуваний результат:**
 - Health Score gauge: 88/100
@@ -148,7 +151,7 @@
 - Interpretation text
 
 **Кроки:**
-3. Переключити на SOL
+5. Переключити на SOL
 
 **Очікуваний результат:**
 - Інші значення: DAA (2M), Tx Count (40M)

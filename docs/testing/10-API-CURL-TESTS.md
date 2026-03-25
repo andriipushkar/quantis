@@ -137,6 +137,22 @@ curl -s http://localhost:3001/api/v1/market/btc-models
 # → 5 models, consensus
 ```
 
+## Arbitrage
+
+```bash
+# Cross-Exchange Arbitrage
+curl -s http://localhost:3001/api/v1/market/arbitrage/cross-exchange
+# → spreads per pair across exchanges
+
+# Funding Rate Arbitrage
+curl -s http://localhost:3001/api/v1/market/arbitrage/funding-rate
+# → funding rate spreads between exchanges
+
+# Triangular Arbitrage
+curl -s http://localhost:3001/api/v1/market/arbitrage/triangular
+# → triangular paths with profit %
+```
+
 ## Analysis
 
 ```bash
@@ -163,6 +179,23 @@ curl -s http://localhost:3001/api/v1/analysis/harmonics/BTCUSDT
 # Wyckoff
 curl -s http://localhost:3001/api/v1/analysis/wyckoff/BTCUSDT
 # → phase, events
+
+# Strategy Backtest
+curl -s -X POST http://localhost:3001/api/v1/analysis/backtest \
+  -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "symbol": "BTCUSDT",
+    "timeframe": "1h",
+    "from": "2026-01-01",
+    "to": "2026-03-01",
+    "strategy": {
+      "entry_conditions": [{"indicator": "RSI", "operator": "<", "value": 30}],
+      "exit_conditions": [{"indicator": "RSI", "operator": ">", "value": 70}],
+      "stop_loss_pct": 2,
+      "take_profit_pct": 5
+    }
+  }'
+# → equity curve, stats (win rate, profit factor, max drawdown, sharpe)
 ```
 
 ## Authenticated Features
@@ -335,6 +368,9 @@ check "DeFi" "http://localhost:3001/api/v1/market/defi"
 check "DevActivity" "http://localhost:3001/api/v1/market/dev-activity"
 check "Network" "http://localhost:3001/api/v1/market/network-metrics/BTCUSDT"
 check "BTCModels" "http://localhost:3001/api/v1/market/btc-models"
+check "ArbCrossEx" "http://localhost:3001/api/v1/market/arbitrage/cross-exchange"
+check "ArbFunding" "http://localhost:3001/api/v1/market/arbitrage/funding-rate"
+check "ArbTriang" "http://localhost:3001/api/v1/market/arbitrage/triangular"
 check "Indicators" "http://localhost:3001/api/v1/analysis/indicators/BTCUSDT"
 check "Signals" "http://localhost:3001/api/v1/analysis/signals"
 check "Patterns" "http://localhost:3001/api/v1/analysis/patterns/BTCUSDT"

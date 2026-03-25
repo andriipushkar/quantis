@@ -112,7 +112,7 @@ const DevActivityTab: React.FC = () => {
         if (!res.ok || !json.success) {
           setError(json.error || 'Failed to load data');
         } else {
-          setProjects(json.data.projects);
+          setProjects(json.data?.projects ?? []);
         }
       } catch {
         setError('Network error');
@@ -310,8 +310,8 @@ const NetworkMetricsTab: React.FC<{ symbol: string; onSymbolChange: (s: string) 
           {/* Health Score */}
           <div className="bg-card border border-border rounded-xl p-6 flex items-center gap-6">
             <div className="flex-shrink-0">
-              <div className="relative w-24 h-24">
-                <svg className="w-24 h-24 -rotate-90" viewBox="0 0 100 100">
+              <div className="relative w-20 h-20 sm:w-24 sm:h-24">
+                <svg className="w-20 h-20 sm:w-24 sm:h-24 -rotate-90" viewBox="0 0 100 100">
                   <circle cx="50" cy="50" r="42" fill="none" stroke="hsl(var(--secondary))" strokeWidth="8" />
                   <circle
                     cx="50"
@@ -438,7 +438,7 @@ export default function OnChain() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 p-1 rounded-lg bg-secondary/50 border border-border w-fit">
+      <div className="flex items-center gap-1 p-1 rounded-lg bg-secondary/50 border border-border w-fit max-w-full overflow-x-auto">
         {TABS.map((tab) => (
           <button
             key={tab.key}

@@ -622,7 +622,7 @@ export default function AdvancedPatterns() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 p-1 rounded-lg bg-secondary/50 border border-border w-fit">
+      <div className="flex items-center gap-1 p-1 rounded-lg bg-secondary/50 border border-border w-fit max-w-full overflow-x-auto">
         {TABS.map((tab) => (
           <button
             key={tab.key}

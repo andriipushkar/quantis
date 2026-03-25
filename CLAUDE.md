@@ -50,3 +50,16 @@ All docs in `docs/` directory:
 - `docs/spec/UA/` — Ukrainian user guides (8 markdown files)
 - `docs/setup/` — Setup guides (quick start, env vars, database, Docker, API keys, deploy)
 - `docs/testing/` — Manual testing guides (auth, charts, trading, API curl tests)
+
+## Recent Features
+- **Merged pages:** Individual pages consolidated into tabbed views:
+  - `/advanced-patterns` — Elliott Wave + Harmonic Patterns + Wyckoff (tabs)
+  - `/advanced-charts` — Renko + Market Profile + Order Flow (tabs)
+  - `/on-chain` — Dev Activity + Network Metrics (tabs)
+  - `/social-intelligence` — Narratives + Influencer Tracker (tabs)
+- **New pages:**
+  - `/arbitrage` — Arbitrage Scanner (cross-exchange, funding rate, triangular)
+  - `/backtester` — Strategy Backtester (preset + custom strategies, equity curve, stats)
+  - `/grid-bot` — Grid Bot (price range grid trading with simulation)
+- **i18n:** English, Ukrainian, German, Spanish now available
+- Old individual routes redirect to merged pages with appropriate `?tab=` parameter

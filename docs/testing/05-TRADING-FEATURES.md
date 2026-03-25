@@ -251,3 +251,87 @@ curl http://localhost:3001/api/v1/analysis/signals
 
 **Очікуваний результат:**
 - Скрипт з'являється в Saved Scripts списку
+
+---
+
+## Тест 5.15: Arbitrage Scanner
+
+**Кроки:**
+1. Перейти на http://localhost:5173/arbitrage
+
+**Очікуваний результат:**
+- 3 вкладки: Cross-Exchange, Funding Rate, Triangular
+- За замовчуванням відкрита Cross-Exchange
+
+**Кроки:**
+2. На вкладці Cross-Exchange:
+
+**Очікуваний результат:**
+- Таблиця з парами: Symbol, Buy Exchange, Sell Exchange, Spread %, Est. Profit
+- Spread > 0 виділений зеленим
+- Auto-refresh toggle (on/off)
+- Profit Calculator: ввести суму → побачити estimated profit
+
+**Кроки:**
+3. Переключити на вкладку Funding Rate
+
+**Очікуваний результат:**
+- Таблиця: Symbol, Exchange A Rate, Exchange B Rate, Spread, Annualized %
+- Extreme spreads виділені
+
+**Кроки:**
+4. Переключити на вкладку Triangular
+
+**Очікуваний результат:**
+- Список трикутних можливостей: Path (наприклад BTC→ETH→USDT→BTC), Profit %, Exchange
+- Positive profit paths виділені зеленим
+
+---
+
+## Тест 5.16: Strategy Backtester
+
+**Кроки:**
+1. Перейти на http://localhost:5173/backtester
+
+**Очікуваний результат:**
+- Форма: Symbol dropdown, Timeframe dropdown, Date Range (from/to)
+- Preset Strategies: RSI Mean Reversion, EMA Crossover, Bollinger Bounce
+- Custom strategy builder: entry/exit conditions, SL%, TP%
+
+**Кроки:**
+2. Вибрати BTCUSDT, 1h, від 2026-01-01 до 2026-03-01
+3. Вибрати preset "RSI Mean Reversion"
+4. Натиснути "Run Backtest"
+
+**Очікуваний результат:**
+- Equity Curve chart (лінійний графік)
+- Stats: Total Trades, Win Rate %, Profit Factor, Max Drawdown %, Sharpe Ratio, Total Return %
+- Trade list: entry/exit dates, P&L per trade
+- Порівняння з Buy & Hold
+
+---
+
+## Тест 5.17: Grid Bot
+
+**Кроки:**
+1. Перейти на http://localhost:5173/grid-bot
+
+**Очікуваний результат:**
+- Форма Create Grid Bot: Symbol, Upper Price, Lower Price, Grid Levels, Investment Amount
+- Grid Preview (візуалізація рівнів на ціновому графіку)
+
+**Кроки:**
+2. Заповнити: BTCUSDT, Upper: 72000, Lower: 65000, Levels: 10, Amount: $5000
+3. Натиснути "Preview"
+
+**Очікуваний результат:**
+- Grid Preview показує 10 горизонтальних ліній між 65000 і 72000
+- Кожен рівень: ціна, тип (buy/sell), розмір ордера
+
+**Кроки:**
+4. Натиснути "Simulate"
+
+**Очікуваний результат:**
+- Simulation results: Total Trades, Grid Profit, Unrealized P&L, APR %
+- Equity curve за період симуляції
+- Бот з'являється в Active Bots списку зі статусом "Simulated"

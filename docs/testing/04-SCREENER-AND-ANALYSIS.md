@@ -142,11 +142,18 @@
 
 ---
 
-## Тест 4.10: Elliott Wave
+## Тест 4.10: Advanced Patterns (Elliott Wave + Harmonic + Wyckoff)
 
 **Кроки:**
-1. Перейти на http://localhost:5173/elliott-wave
+1. Перейти на http://localhost:5173/advanced-patterns
 2. Вибрати BTCUSDT
+
+**Очікуваний результат:**
+- 3 вкладки: Elliott Wave, Harmonic, Wyckoff
+- За замовчуванням відкрита Elliott Wave
+
+**Кроки (Elliott Wave tab):**
+3. На вкладці Elliott Wave:
 
 **Очікуваний результат:**
 - Pattern badge: Impulse / Correction / None
@@ -154,25 +161,15 @@
 - Fibonacci targets
 - Confidence bar
 
----
-
-## Тест 4.11: Harmonic Patterns
-
-**Кроки:**
-1. Перейти на http://localhost:5173/harmonic-patterns
-2. Вибрати BTCUSDT
+**Кроки (Harmonic tab):**
+4. Переключити на вкладку Harmonic
 
 **Очікуваний результат:**
 - Список знайдених патернів (Gartley, Butterfly, Bat, Crab) або "No patterns found"
 - Кожен патерн: XABCD точки з цінами, ratios, PRZ zone, confidence
 
----
-
-## Тест 4.12: Wyckoff Phase
-
-**Кроки:**
-1. Перейти на http://localhost:5173/wyckoff
-2. Вибрати BTCUSDT
+**Кроки (Wyckoff tab):**
+5. Переключити на вкладку Wyckoff
 
 **Очікуваний результат:**
 - Великий badge фази: Accumulation (зелений), Markup (зелений), Distribution (червоний), Markdown (червоний)
@@ -182,24 +179,26 @@
 
 ---
 
-## Тест 4.13: Order Flow
+## Тест 4.11: Advanced Charts (Renko + Market Profile + Order Flow)
 
 **Кроки:**
-1. Перейти на http://localhost:5173/order-flow
+1. Перейти на http://localhost:5173/advanced-charts
 2. Вибрати BTCUSDT
+
+**Очікуваний результат:**
+- 3 вкладки: Renko, Market Profile, Order Flow
+- За замовчуванням відкрита Renko
+
+**Кроки (Order Flow tab):**
+3. Переключити на вкладку Order Flow
 
 **Очікуваний результат:**
 - Summary: Total Buys, Total Sells, Net Delta, Dominant Side
 - Cumulative delta chart (canvas лінія)
 - Footprint таблиця: зелені/червоні клітинки за delta magnitude
 
----
-
-## Тест 4.14: Market Profile
-
-**Кроки:**
-1. Перейти на http://localhost:5173/market-profile
-2. Вибрати BTCUSDT
+**Кроки (Market Profile tab):**
+4. Переключити на вкладку Market Profile
 
 **Очікуваний результат:**
 - Horizontal volume bars (canvas)

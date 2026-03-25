@@ -178,7 +178,7 @@ const RenkoTab: React.FC<{ symbol: string }> = ({ symbol }) => {
     });
   }, [data]);
 
-  const last5 = data?.bricks.slice(-5) || [];
+  const last5 = data?.bricks?.slice(-5) || [];
   const upCount = last5.filter((b) => b.type === 'up').length;
   const downCount = last5.filter((b) => b.type === 'down').length;
   const trendLabel = upCount > downCount ? 'Bullish' : downCount > upCount ? 'Bearish' : 'Neutral';
@@ -706,7 +706,7 @@ export default function AdvancedCharts() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 p-1 rounded-lg bg-secondary/50 border border-border w-fit">
+      <div className="flex items-center gap-1 p-1 rounded-lg bg-secondary/50 border border-border w-fit max-w-full overflow-x-auto">
         {TABS.map((tab) => (
           <button
             key={tab.key}
