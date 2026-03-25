@@ -249,7 +249,10 @@ describe('Header', () => {
 import { Sidebar } from '@/components/layout/Sidebar';
 
 describe('Sidebar', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
 
   it('renders logo Q badge', () => {
     wrap(<Sidebar collapsed={false} onToggle={vi.fn()} />);
@@ -266,12 +269,21 @@ describe('Sidebar', () => {
     expect(screen.queryByText('Quantis')).toBeNull();
   });
 
-  it('renders all nav items with links', () => {
+  it('renders nav items in Core group (always expanded)', () => {
     wrap(<Sidebar collapsed={false} onToggle={vi.fn()} />);
     expect(screen.getByText('nav.dashboard')).toBeTruthy();
     expect(screen.getByText('nav.chart')).toBeTruthy();
-    expect(screen.getByText('nav.signals')).toBeTruthy();
-    expect(screen.getByText('nav.settings')).toBeTruthy();
+  });
+
+  it('renders 8 collapsible group headers', () => {
+    wrap(<Sidebar collapsed={false} onToggle={vi.fn()} />);
+    expect(screen.getByTestId('nav-group-core')).toBeTruthy();
+    expect(screen.getByTestId('nav-group-analysis')).toBeTruthy();
+    expect(screen.getByTestId('nav-group-data')).toBeTruthy();
+    expect(screen.getByTestId('nav-group-trading')).toBeTruthy();
+    expect(screen.getByTestId('nav-group-account')).toBeTruthy();
+    expect(screen.getByTestId('nav-group-community')).toBeTruthy();
+    expect(screen.getByTestId('nav-group-learn')).toBeTruthy();
   });
 
   it('hides nav labels when collapsed', () => {
@@ -282,10 +294,8 @@ describe('Sidebar', () => {
   it('calls onToggle when collapse button is clicked', () => {
     const onToggle = vi.fn();
     wrap(<Sidebar collapsed={false} onToggle={onToggle} />);
-    // The toggle button is the last button in the sidebar
-    const buttons = screen.getAllByRole('button');
-    // Last button is the collapse toggle
-    fireEvent.click(buttons[buttons.length - 1]);
+    const toggle = screen.getByTestId('sidebar-collapse-toggle');
+    fireEvent.click(toggle);
     expect(onToggle).toHaveBeenCalledOnce();
   });
 

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, X, TrendingUp, FileText, Zap, Clock } from 'lucide-react';
+import { Search, X, TrendingUp, Zap, Clock } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { useMarketStore } from '@/stores/market';
+import { ALL_NAV_ITEMS } from '@/config/navigation';
 
 interface SearchResult {
   id: string;
@@ -12,33 +13,68 @@ interface SearchResult {
   route: string;
 }
 
-const PAGES: SearchResult[] = [
-  { id: 'page-dashboard', name: 'Dashboard', type: 'page', icon: FileText, route: '/dashboard' },
-  { id: 'page-chart', name: 'Chart', type: 'page', icon: FileText, route: '/chart' },
-  { id: 'page-screener', name: 'Screener', type: 'page', icon: FileText, route: '/screener' },
-  { id: 'page-heatmap', name: 'Heatmap', type: 'page', icon: FileText, route: '/heatmap' },
-  { id: 'page-signals', name: 'Signals', type: 'page', icon: FileText, route: '/signals' },
-  { id: 'page-alerts', name: 'Alerts', type: 'page', icon: FileText, route: '/alerts' },
-  { id: 'page-portfolio', name: 'Portfolio', type: 'page', icon: FileText, route: '/portfolio' },
-  { id: 'page-copilot', name: 'AI Copilot', type: 'page', icon: FileText, route: '/copilot' },
-  { id: 'page-paper', name: 'Paper Trading', type: 'page', icon: FileText, route: '/paper-trading' },
-  { id: 'page-journal', name: 'Journal', type: 'page', icon: FileText, route: '/journal' },
-  { id: 'page-multi-chart', name: 'Multi-Chart', type: 'page', icon: FileText, route: '/multi-chart' },
-  { id: 'page-news', name: 'News', type: 'page', icon: FileText, route: '/news' },
-  { id: 'page-whale', name: 'Whale Alert', type: 'page', icon: FileText, route: '/whale-alert' },
-  { id: 'page-academy', name: 'Academy', type: 'page', icon: FileText, route: '/academy' },
-  { id: 'page-settings', name: 'Settings', type: 'page', icon: FileText, route: '/settings' },
-  { id: 'page-indicators', name: 'Indicator Library', type: 'page', icon: FileText, route: '/indicators' },
-  { id: 'page-correlation', name: 'Correlation', type: 'page', icon: FileText, route: '/correlation' },
-  { id: 'page-regime', name: 'Market Regime Scoring', type: 'page', icon: FileText, route: '/regime' },
-  { id: 'page-leaderboard', name: 'Leaderboard', type: 'page', icon: FileText, route: '/leaderboard' },
-  { id: 'page-token-scanner', name: 'Token Scanner', type: 'page', icon: FileText, route: '/token-scanner' },
-  { id: 'page-dca', name: 'DCA Bot', type: 'page', icon: FileText, route: '/dca' },
-  { id: 'page-options', name: 'Options', type: 'page', icon: FileText, route: '/options' },
-  { id: 'page-liquidations', name: 'Liquidations', type: 'page', icon: FileText, route: '/liquidations' },
-  { id: 'page-marketplace', name: 'Marketplace', type: 'page', icon: FileText, route: '/marketplace' },
-  { id: 'page-profile', name: 'Profile', type: 'page', icon: FileText, route: '/profile' },
-];
+// Label key → readable name mapping (English fallback for search)
+const LABEL_NAMES: Record<string, string> = {
+  'nav.dashboard': 'Dashboard',
+  'nav.chart': 'Chart',
+  'nav.multiChart': 'Multi-Chart',
+  'nav.screener': 'Screener',
+  'nav.signals': 'Signals',
+  'nav.heatmap': 'Heatmap',
+  'nav.correlation': 'Correlation',
+  'nav.regime': 'Market Regime Scoring',
+  'nav.seasonality': 'Seasonality',
+  'nav.marketBreadth': 'Market Breadth',
+  'nav.confluence': 'Confluence Map',
+  'nav.patternScanner': 'Pattern Scanner',
+  'nav.elliottWave': 'Elliott Wave',
+  'nav.harmonicPatterns': 'Harmonic Patterns',
+  'nav.wyckoff': 'Wyckoff Phase',
+  'nav.orderFlow': 'Order Flow',
+  'nav.marketProfile': 'Market Profile',
+  'nav.intermarket': 'Intermarket',
+  'nav.tokenScanner': 'Token Scanner',
+  'nav.openInterest': 'Open Interest',
+  'nav.fundingRates': 'Funding Rates',
+  'nav.whaleAlert': 'Whale Alert',
+  'nav.liquidations': 'Liquidations',
+  'nav.exchangeHealth': 'Exchange Health',
+  'nav.defi': 'DeFi',
+  'nav.networkMetrics': 'Network Metrics',
+  'nav.tokenomics': 'Tokenomics',
+  'nav.renko': 'Renko Chart',
+  'nav.btcModels': 'BTC Models',
+  'nav.paperTrading': 'Paper Trading',
+  'nav.dcaBot': 'DCA Bot',
+  'nav.copyTrading': 'Copy Trading',
+  'nav.chartReplay': 'Chart Replay',
+  'nav.copilot': 'AI Copilot',
+  'nav.scriptEditor': 'Script Editor',
+  'nav.indicatorLibrary': 'Indicator Library',
+  'nav.options': 'Options',
+  'nav.portfolio': 'Portfolio',
+  'nav.journal': 'Journal',
+  'nav.alerts': 'Alerts',
+  'nav.taxReport': 'Tax Report',
+  'nav.walletTracker': 'Wallet Tracker',
+  'nav.profile': 'Profile',
+  'nav.settings': 'Settings',
+  'nav.social': 'Social Feed',
+  'nav.leaderboard': 'Leaderboard',
+  'nav.marketplace': 'Marketplace',
+  'nav.news': 'News',
+  'nav.influencerTracker': 'Influencer Tracker',
+  'nav.academy': 'Academy',
+};
+
+// Build PAGES from the shared navigation config so every page is searchable
+const PAGES: SearchResult[] = ALL_NAV_ITEMS.map((item) => ({
+  id: `page-${item.path.replace(/\//g, '-').replace(/^-/, '')}`,
+  name: LABEL_NAMES[item.labelKey] ?? item.labelKey.replace('nav.', ''),
+  type: 'page' as const,
+  icon: item.icon,
+  route: item.path,
+}));
 
 const ACTIONS: SearchResult[] = [
   { id: 'action-create-alert', name: 'Create Alert', type: 'action', icon: Zap, route: '/alerts' },

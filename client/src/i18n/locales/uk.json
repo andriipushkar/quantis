@@ -56,6 +56,17 @@
     "btcModels": "Моделі BTC",
     "regime": "Режим ринку"
   },
+  "navGroup": {
+    "favorites": "Обране",
+    "core": "Основне",
+    "analysis": "Аналітика",
+    "data": "Дані",
+    "trading": "Торгівля",
+    "aiTools": "AI та Інструменти",
+    "account": "Мій акаунт",
+    "community": "Спільнота",
+    "learn": "Навчання"
+  },
   "auth": {
     "login": "Увійти",
     "register": "Реєстрація",

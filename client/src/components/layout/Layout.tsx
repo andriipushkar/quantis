@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import React, { useState, useCallback, useMemo } from 'react';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   LayoutDashboard,
@@ -9,22 +9,24 @@ import {
   Signal,
   Menu,
   X,
-  Bell,
-  Briefcase,
-  Settings,
-  BookOpen,
-  Newspaper,
-  Trophy,
-  Wallet,
-  FileText,
-  Users,
-  TrendingUp,
-  BarChart3,
-  Layers,
+  ChevronDown,
+  ChevronRight,
+  Lock,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import {
+  NAV_GROUPS,
+  findGroupByPath,
+  isItemLocked,
+  type NavGroup,
+} from '@/config/navigation';
+import { useAuthStore } from '@/stores/auth';
+
+// ---------------------------------------------------------------------------
+// Mobile bottom tab items (always visible)
+// ---------------------------------------------------------------------------
 
 const mobileNavItems = [
   { icon: LayoutDashboard, labelKey: 'nav.dashboard', path: '/dashboard' },
@@ -34,52 +36,109 @@ const mobileNavItems = [
   { icon: Signal, labelKey: 'nav.signals', path: '/signals' },
 ];
 
-const moreMenuSections = [
-  {
-    title: 'Trading',
-    items: [
-      { icon: Bell, labelKey: 'nav.alerts', path: '/alerts' },
-      { icon: Briefcase, labelKey: 'nav.portfolio', path: '/portfolio' },
-      { icon: TrendingUp, labelKey: 'nav.paperTrading', path: '/paper-trading' },
-      { icon: FileText, labelKey: 'nav.journal', path: '/journal' },
-      { icon: Users, labelKey: 'nav.copyTrading', path: '/copy-trading' },
-    ],
-  },
-  {
-    title: 'Analysis',
-    items: [
-      { icon: BarChart3, labelKey: 'nav.multiChart', path: '/multi-chart' },
-      { icon: Layers, labelKey: 'nav.confluence', path: '/confluence' },
-      { icon: TrendingUp, labelKey: 'nav.marketBreadth', path: '/market-breadth' },
-      { icon: BarChart3, labelKey: 'nav.openInterest', path: '/open-interest' },
-      { icon: LineChart, labelKey: 'nav.fundingRates', path: '/funding-rates' },
-      { icon: Search, labelKey: 'nav.tokenScanner', path: '/token-scanner' },
-    ],
-  },
-  {
-    title: 'Social',
-    items: [
-      { icon: Users, labelKey: 'nav.social', path: '/social' },
-      { icon: Trophy, labelKey: 'nav.leaderboard', path: '/leaderboard' },
-      { icon: Newspaper, labelKey: 'nav.news', path: '/news' },
-      { icon: Wallet, labelKey: 'nav.whaleAlert', path: '/whale-alert' },
-    ],
-  },
-  {
-    title: 'More',
-    items: [
-      { icon: BookOpen, labelKey: 'nav.academy', path: '/academy' },
-      { icon: Settings, labelKey: 'nav.settings', path: '/settings' },
-      { icon: Users, labelKey: 'nav.profile', path: '/profile' },
-    ],
-  },
-];
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 export const Layout: React.FC = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
+  const user = useAuthStore((s) => s.user);
+  const userTier = user?.tier ?? 'free';
+
+  // Mobile expanded groups — auto-expand group with active route
+  const activeGroupId = useMemo(
+    () => findGroupByPath(location.pathname),
+    [location.pathname]
+  );
+
+  const [mobileExpandedGroups, setMobileExpandedGroups] = useState<Set<string>>(() => {
+    const initial = new Set<string>(['core']);
+    if (activeGroupId) initial.add(activeGroupId);
+    return initial;
+  });
+
+  const toggleMobileGroup = useCallback((groupId: string) => {
+    setMobileExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  }, []);
+
+  const renderMobileGroup = (group: NavGroup) => {
+    const isExpanded = mobileExpandedGroups.has(group.id);
+    const itemCount = group.items.length;
+
+    return (
+      <div key={group.id} data-testid={`mobile-nav-group-${group.id}`}>
+        {/* Group header */}
+        <button
+          onClick={() => toggleMobileGroup(group.id)}
+          className="flex items-center justify-between w-full px-4 py-3 text-sm font-semibold text-foreground"
+          data-testid={`mobile-group-toggle-${group.id}`}
+        >
+          <span>{t(group.labelKey)}</span>
+          <span className="flex items-center gap-2">
+            {!isExpanded && (
+              <span className="text-xs font-normal text-muted-foreground">
+                {itemCount}
+              </span>
+            )}
+            {isExpanded ? (
+              <ChevronDown className="w-4 h-4 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            )}
+          </span>
+        </button>
+
+        {/* Items grid */}
+        {isExpanded && (
+          <div className="grid grid-cols-3 gap-2 px-4 pb-4">
+            {group.items.map((item) => {
+              const locked = isItemLocked(item.tier, userTier);
+              const isActive = location.pathname.startsWith(item.path);
+              return (
+                <button
+                  key={item.path}
+                  onClick={() => {
+                    if (!locked) {
+                      navigate(item.path);
+                      setMoreOpen(false);
+                    }
+                  }}
+                  className={cn(
+                    'relative flex flex-col items-center gap-2 p-3 rounded-xl border transition-all',
+                    locked
+                      ? 'opacity-50 cursor-not-allowed bg-card border-border'
+                      : isActive
+                        ? 'bg-primary/10 border-primary/50'
+                        : 'bg-card border-border hover:border-primary/50 hover:bg-secondary'
+                  )}
+                >
+                  <item.icon className={cn('w-5 h-5', isActive ? 'text-primary' : 'text-primary')} />
+                  <span className="text-[11px] font-medium text-foreground text-center leading-tight">
+                    {t(item.labelKey)}
+                  </span>
+                  {locked && (
+                    <Lock className="absolute top-1.5 right-1.5 w-3 h-3 text-muted-foreground" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -128,17 +187,18 @@ export const Layout: React.FC = () => {
             'flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg transition-colors',
             moreOpen ? 'text-primary' : 'text-muted-foreground'
           )}
+          data-testid="mobile-more-button"
         >
           <Menu className="w-5 h-5" />
           <span className="text-[10px] font-medium">{t('common.next', 'More')}</span>
         </button>
       </nav>
 
-      {/* Mobile "More" fullscreen menu */}
+      {/* Mobile "More" fullscreen menu with collapsible groups */}
       {moreOpen && (
-        <div className="md:hidden fixed inset-0 z-[60] bg-background overflow-y-auto">
+        <div className="md:hidden fixed inset-0 z-[60] bg-background overflow-y-auto" data-testid="mobile-more-menu">
           {/* Header */}
-          <div className="sticky top-0 bg-background border-b border-border flex items-center justify-between px-4 h-14">
+          <div className="sticky top-0 bg-background border-b border-border flex items-center justify-between px-4 h-14 z-10">
             <span className="text-foreground font-semibold">{t('common.next', 'More')}</span>
             <button
               onClick={() => setMoreOpen(false)}
@@ -148,29 +208,9 @@ export const Layout: React.FC = () => {
             </button>
           </div>
 
-          {/* Menu sections */}
-          <div className="p-4 space-y-6 pb-20">
-            {moreMenuSections.map((section) => (
-              <div key={section.title}>
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 px-2">
-                  {section.title}
-                </h3>
-                <div className="grid grid-cols-3 gap-2">
-                  {section.items.map((item) => (
-                    <button
-                      key={item.path}
-                      onClick={() => { navigate(item.path); setMoreOpen(false); }}
-                      className="flex flex-col items-center gap-2 p-3 rounded-xl bg-card border border-border hover:border-primary/50 hover:bg-secondary transition-all"
-                    >
-                      <item.icon className="w-5 h-5 text-primary" />
-                      <span className="text-[11px] font-medium text-foreground text-center leading-tight">
-                        {t(item.labelKey)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
+          {/* Grouped sections */}
+          <div className="py-2 pb-20 divide-y divide-border">
+            {NAV_GROUPS.map(renderMobileGroup)}
           </div>
         </div>
       )}

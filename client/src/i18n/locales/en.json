@@ -56,6 +56,17 @@
     "btcModels": "BTC Models",
     "regime": "Regime Scoring"
   },
+  "navGroup": {
+    "favorites": "Favorites",
+    "core": "Core",
+    "analysis": "Analysis",
+    "data": "Data",
+    "trading": "Trading",
+    "aiTools": "AI & Tools",
+    "account": "My Account",
+    "community": "Community",
+    "learn": "Learn"
+  },
   "auth": {
     "login": "Log In",
     "register": "Create Account",

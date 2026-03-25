@@ -56,6 +56,17 @@
     "btcModels": "BTC-Modelle",
     "regime": "Marktregime"
   },
+  "navGroup": {
+    "favorites": "Favoriten",
+    "core": "Kern",
+    "analysis": "Analyse",
+    "data": "Daten",
+    "trading": "Handel",
+    "aiTools": "KI & Tools",
+    "account": "Mein Konto",
+    "community": "Community",
+    "learn": "Lernen"
+  },
   "auth": {
     "login": "Anmelden",
     "register": "Registrieren",
